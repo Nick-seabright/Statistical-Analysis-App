@@ -36,7 +36,7 @@ from edu_analytics.utils import (
 
 # Set page configuration
 st.set_page_config(
-    page_title="Educational Analytics",
+    page_title="Statistical Analytics",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -122,7 +122,7 @@ def main():
     create_sidebar()
     
     # Main app title
-    st.markdown("<div class='main-header'>Educational Analytics Dashboard</div>", unsafe_allow_html=True)
+    st.markdown("<div class='main-header'>Statistical Analytics Dashboard</div>", unsafe_allow_html=True)
     
     # If no data is loaded, show the data upload section
     if st.session_state.data is None:
@@ -191,14 +191,13 @@ def create_sidebar():
         # Add helpful resources
         st.markdown("---")
         st.subheader("Resources")
-        st.markdown("[GitHub Repository](https://github.com/yourusername/educational-analytics)")
-        st.markdown("[Documentation](https://your-docs-url.com)")
-        st.markdown("[Submit Issue](https://github.com/yourusername/educational-analytics/issues)")
+        st.markdown("[GitHub Repository](https://github.com/Nick-seabright/Statistical-Analytics-App)")
+        st.markdown("[Submit Issue](https://github.com/yourusername/statistical-analytics/issues)")
 
 # Data upload section
 def data_upload_section():
     st.markdown("<div class='subheader'>Upload Your Data</div>", unsafe_allow_html=True)
-    st.markdown("<div class='info-text'>Upload a CSV file containing your educational data.</div>", unsafe_allow_html=True)
+    st.markdown("<div class='info-text'>Upload a CSV file containing your statistical data.</div>", unsafe_allow_html=True)
     
     uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
     
@@ -3282,7 +3281,7 @@ def report_generation_section():
     
     # Report metadata
     st.markdown("### Report Metadata")
-    report_title = st.text_input("Report Title", value="Educational Analytics Report")
+    report_title = st.text_input("Report Title", value="Statistical Analytics Report")
     author = st.text_input("Author", value="")
     
     # Generate report button
@@ -3311,7 +3310,7 @@ def report_generation_section():
                 st.download_button(
                     label="Download Report (PDF)",
                     data=pdf_report,
-                    file_name=f"educational_analytics_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                    file_name=f"Statistical_analytics_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
                     mime='application/pdf',
                 )
                 
@@ -3319,7 +3318,7 @@ def report_generation_section():
                 st.download_button(
                     label="Download Report (HTML)",
                     data=report_html,
-                    file_name=f"educational_analytics_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
+                    file_name=f"Statistical_analytics_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
                     mime='text/html',
                 )
                 
@@ -3462,8 +3461,8 @@ def generate_html_report(title, author, sections, report_data, data=None, target
     # Add footer
     html += f"""
         <div class="footer">
-            <p>Generated using Educational Analytics Tool</p>
-            <p>© {datetime.now().year} Educational Analytics</p>
+            <p>Generated using Statistical Analytics Tool</p>
+            <p>© {datetime.now().year} Statistical Analytics</p>
         </div>
     </body>
     </html>

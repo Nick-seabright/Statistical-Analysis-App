@@ -1,3 +1,5 @@
+# edu_analytics/statistical_tests.py
+
 import numpy as np
 import pandas as pd
 import scipy.stats as stats
@@ -6,6 +8,9 @@ import seaborn as sns
 from typing import Tuple, Dict, List, Optional, Union
 import statsmodels.api as sm
 from statsmodels.formula.api import ols
+import logging
+
+logger = logging.getLogger(__name__)
 
 def perform_t_test(
     data: pd.DataFrame, 
@@ -438,6 +443,131 @@ def visualize_anova(results: Dict) -> plt.Figure:
     
     return fig
 
+def perform_correlation(
+    data: pd.DataFrame,
+    x: str,
+    y: str,
+    alpha: float = 0.05,
+    method: str = 'pearson'
+) -> Dict:
+    """
+    Perform correlation analysis between two variables.
+    
+    Parameters:
+    -----------
+    data : DataFrame
+        The dataset containing the variables
+    x : str
+        The first variable
+    y : str
+        The second variable
+    alpha : float
+        Significance level (default: 0.05)
+    method : str
+        Correlation method ('pearson', 'spearman', 'kendall')
+        
+    Returns:
+    --------
+    Dict containing correlation results
+    """
+    # Check if variables are numeric
+    for var in [x, y]:
+        if not pd.api.types.is_numeric_dtype(data[var]):
+            raise ValueError(f"Variable {var} must be numeric for correlation analysis.")
+    
+    # Calculate correlation coefficient and p-value
+    if method == 'pearson':
+        corr, p_value = stats.pearsonr(data[x], data[y])
+    elif method == 'spearman':
+        corr, p_value = stats.spearmanr(data[x], data[y])
+    elif method == 'kendall':
+        corr, p_value = stats.kendalltau(data[x], data[y])
+    else:
+        raise ValueError(f"Unknown correlation method: {method}")
+    
+    # Prepare results
+    results = {
+        'x': x,
+        'y': y,
+        'method': method,
+        'correlation': corr,
+        'p_value': p_value,
+        'significant': p_value < alpha,
+        'alpha': alpha,
+        'r_squared': corr**2,
+        'effect_size': interpret_correlation(corr)
+    }
+    
+    return results
+
+def interpret_correlation(r: float) -> str:
+    """Interpret correlation coefficient effect size"""
+    r_abs = abs(r)
+    if r_abs < 0.1:
+        return "Negligible"
+    elif r_abs < 0.3:
+        return "Weak"
+    elif r_abs < 0.5:
+        return "Moderate"
+    elif r_abs < 0.7:
+        return "Strong"
+    else:
+        return "Very strong"
+
+def visualize_correlation(results: Dict) -> plt.Figure:
+    """
+    Create visualization for correlation analysis.
+    
+    Parameters:
+    -----------
+    results : Dict
+        Dictionary containing correlation results
+        
+    Returns:
+    --------
+    matplotlib Figure
+    """
+    fig, ax = plt.subplots(figsize=(10, 8))
+    
+    # Get data
+    x = results['x']
+    y = results['y']
+    
+    # Create scatter plot with regression line
+    sns.regplot(x=x, y=y, data=results['data'], ax=ax)
+    
+    # Add correlation information
+    corr_type = results['method'].capitalize()
+    corr_value = results['correlation']
+    p_value = results['p_value']
+    r_squared = results['r_squared']
+    effect_size = results['effect_size']
+    
+    # Add title and labels
+    ax.set_title(f"{corr_type} Correlation: {x} vs {y}")
+    
+    # Add annotation
+    text = f"{corr_type} r = {corr_value:.3f}\n"
+    text += f"p-value = {p_value:.4f}\n"
+    text += f"r² = {r_squared:.3f}\n"
+    text += f"Effect size: {effect_size}"
+    
+    # Position text based on correlation direction
+    if corr_value < 0:
+        ax.text(0.95, 0.05, text, transform=ax.transAxes, ha='right', va='bottom',
+               bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+    else:
+        ax.text(0.05, 0.95, text, transform=ax.transAxes, ha='left', va='top',
+               bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+    
+    # Add significance indicator
+    if results['significant']:
+        plt.figtext(0.5, 0.01, "Significant correlation (p < 0.05)", ha='center', fontsize=12)
+    else:
+        plt.figtext(0.5, 0.01, "Non-significant correlation (p > 0.05)", ha='center', fontsize=12)
+    
+    return fig
+
 def multi_group_analysis(
     data: pd.DataFrame,
     feature: str,
@@ -477,7 +607,7 @@ def multi_group_analysis(
             try:
                 results[group] = perform_anova(data, feature, group, alpha)
             except Exception as e:
-                print(f"Error performing ANOVA for {group}: {str(e)}")
+                logger.error(f"Error performing ANOVA for {group}: {str(e)}")
                 results[group] = {"error": str(e)}
         else:
             # Not enough groups for analysis
@@ -515,7 +645,7 @@ def categorical_association_analysis(
         try:
             results[feature] = perform_chi_square(data, feature, target, alpha)
         except Exception as e:
-            print(f"Error performing chi-square test for {feature}: {str(e)}")
+            logger.error(f"Error performing chi-square test for {feature}: {str(e)}")
             results[feature] = {"error": str(e)}
     
     # Create summary dataframe
@@ -574,10 +704,11 @@ def numerical_correlation_analysis(
                 'significant': p_value < alpha,
                 'alpha': alpha,
                 'r_squared': corr**2,
-                'effect_size': interpret_correlation(corr)
+                'effect_size': interpret_correlation(corr),
+                'data': data[[feature, target]]
             }
         except Exception as e:
-            print(f"Error calculating correlation for {feature}: {str(e)}")
+            logger.error(f"Error calculating correlation for {feature}: {str(e)}")
             results[feature] = {"error": str(e)}
     
     # Create summary dataframe
@@ -596,20 +727,6 @@ def numerical_correlation_analysis(
     results['summary'] = pd.DataFrame(summary).sort_values('correlation', ascending=False, key=abs)
     
     return results
-
-def interpret_correlation(r: float) -> str:
-    """Interpret correlation coefficient effect size"""
-    r_abs = abs(r)
-    if r_abs < 0.1:
-        return "Negligible"
-    elif r_abs < 0.3:
-        return "Weak"
-    elif r_abs < 0.5:
-        return "Moderate"
-    elif r_abs < 0.7:
-        return "Strong"
-    else:
-        return "Very strong"
 
 def visualize_correlation_analysis(results: Dict) -> plt.Figure:
     """
@@ -654,18 +771,14 @@ def visualize_correlation_analysis(results: Dict) -> plt.Figure:
     # Plot 2: Scatter plots for top 4 features
     if len(features) > 0:
         num_plots = min(4, len(features))
-        for i in range(num_plots):
-            ax = ax2 if num_plots == 1 else ax2.flatten()[i] if num_plots == 4 else ax2[i]
-            
-            feature = features[i]
+        if num_plots == 1:
+            feature = features[0]
             result = results[feature]
+            data = result['data']
             
             # Create scatter plot
-            x = result['feature']
-            y = result['target']
-            
-            sns.regplot(x=data[x], y=data[y], ax=ax, scatter_kws={'alpha': 0.5})
-            ax.set_title(f"{x} vs {y} (r={result['correlation']:.3f})")
+            sns.regplot(x=data[feature], y=data[result['target']], ax=ax2, scatter_kws={'alpha': 0.5})
+            ax2.set_title(f"{feature} vs {result['target']} (r={result['correlation']:.3f})")
             
             # Add correlation text
             text = f"r = {result['correlation']:.3f}\np = {result['p_value']:.3e}\n"
@@ -673,12 +786,209 @@ def visualize_correlation_analysis(results: Dict) -> plt.Figure:
             
             # Position text based on correlation direction
             if result['correlation'] < 0:
-                ax.text(0.95, 0.95, text, transform=ax.transAxes, 
+                ax2.text(0.95, 0.95, text, transform=ax2.transAxes, 
                        ha='right', va='top', bbox=dict(boxstyle='round', alpha=0.1))
             else:
-                ax.text(0.05, 0.95, text, transform=ax.transAxes, 
+                ax2.text(0.05, 0.95, text, transform=ax2.transAxes, 
                        ha='left', va='top', bbox=dict(boxstyle='round', alpha=0.1))
+        else:
+            # Create subplot grid for multiple features
+            from matplotlib.gridspec import GridSpec
+            gs = GridSpec(2, 2, figure=fig)
+            ax2.remove()  # Remove the original ax2
+            
+            for i in range(num_plots):
+                feature = features[i]
+                result = results[feature]
+                data = result['data']
+                
+                # Create subplot
+                row, col = divmod(i, 2)
+                ax = fig.add_subplot(gs[row, col])
+                
+                # Create scatter plot
+                sns.regplot(x=data[feature], y=data[result['target']], ax=ax, scatter_kws={'alpha': 0.5})
+                ax.set_title(f"{feature} vs {result['target']} (r={result['correlation']:.3f})")
+                
+                # Add correlation text
+                text = f"r = {result['correlation']:.3f}\np = {result['p_value']:.3e}\n"
+                text += f"Effect: {result['effect_size']}"
+                
+                # Position text based on correlation direction
+                if result['correlation'] < 0:
+                    ax.text(0.95, 0.95, text, transform=ax.transAxes, 
+                           ha='right', va='top', bbox=dict(boxstyle='round', alpha=0.1))
+                else:
+                    ax.text(0.05, 0.95, text, transform=ax.transAxes, 
+                           ha='left', va='top', bbox=dict(boxstyle='round', alpha=0.1))
     
     plt.tight_layout()
+    
+    return fig
+
+def perform_nonparametric_test(
+    data: pd.DataFrame,
+    feature: str,
+    group: str,
+    alpha: float = 0.05
+) -> Dict:
+    """
+    Perform non-parametric tests (Mann-Whitney U or Kruskal-Wallis)
+    based on the number of groups.
+    
+    Parameters:
+    -----------
+    data : DataFrame
+        The dataset containing features and groups
+    feature : str
+        The numerical feature to analyze
+    group : str
+        The categorical grouping variable
+    alpha : float
+        Significance level (default: 0.05)
+        
+    Returns:
+    --------
+    Dict containing test results
+    """
+    # Get number of unique values in the group
+    unique_groups = data[group].unique()
+    n_groups = len(unique_groups)
+    
+    if n_groups < 2:
+        raise ValueError(f"At least 2 groups required for non-parametric tests. Found {n_groups}.")
+    
+    # Group data
+    grouped_data = [data[data[group] == g][feature].dropna() for g in unique_groups]
+    
+    if n_groups == 2:
+        # Mann-Whitney U test for 2 groups
+        u_stat, p_value = stats.mannwhitneyu(grouped_data[0], grouped_data[1])
+        
+        # Calculate effect size (r)
+        n1 = len(grouped_data[0])
+        n2 = len(grouped_data[1])
+        r = u_stat / (n1 * n2)
+        
+        # Prepare results
+        results = {
+            'feature': feature,
+            'group': group,
+            'test_type': 'Mann-Whitney U',
+            'u_statistic': u_stat,
+            'p_value': p_value,
+            'significant': p_value < alpha,
+            'alpha': alpha,
+            'effect_size_r': r,
+            'effect_size': interpret_nonparametric_effect(r),
+            'group1_median': grouped_data[0].median(),
+            'group2_median': grouped_data[1].median(),
+            'group1_n': n1,
+            'group2_n': n2,
+            'group_names': unique_groups
+        }
+    else:
+        # Kruskal-Wallis test for 3+ groups
+        h_stat, p_value = stats.kruskal(*grouped_data)
+        
+        # Calculate effect size (eta-squared)
+        n = sum(len(g) for g in grouped_data)
+        eta_squared = (h_stat - n_groups + 1) / (n - n_groups)
+        
+        # Prepare results
+        results = {
+            'feature': feature,
+            'group': group,
+            'test_type': 'Kruskal-Wallis',
+            'h_statistic': h_stat,
+            'p_value': p_value,
+            'significant': p_value < alpha,
+            'alpha': alpha,
+            'eta_squared': eta_squared,
+            'effect_size': interpret_eta_squared(eta_squared),
+            'group_stats': data.groupby(group)[feature].agg(['median', 'count']).reset_index(),
+            'group_names': unique_groups
+        }
+    
+    return results
+
+def interpret_nonparametric_effect(r: float) -> str:
+    """Interpret effect size for non-parametric tests"""
+    r_abs = abs(r)
+    if r_abs < 0.1:
+        return "Negligible"
+    elif r_abs < 0.3:
+        return "Small"
+    elif r_abs < 0.5:
+        return "Medium"
+    else:
+        return "Large"
+
+def visualize_nonparametric_test(results: Dict) -> plt.Figure:
+    """
+    Create visualization for non-parametric test results.
+    
+    Parameters:
+    -----------
+    results : Dict
+        Dictionary containing non-parametric test results
+        
+    Returns:
+    --------
+    matplotlib Figure
+    """
+    test_type = results['test_type']
+    
+    if test_type == 'Mann-Whitney U':
+        # Visualization for Mann-Whitney U test
+        fig, ax = plt.subplots(figsize=(10, 6))
+        
+        group_names = results['group_names']
+        medians = [results['group1_median'], results['group2_median']]
+        
+        # Bar plot of medians
+        ax.bar(group_names, medians, alpha=0.7)
+        ax.set_ylabel(results['feature'])
+        ax.set_title(f"Median of {results['feature']} by {results['group']}")
+        
+        # Add significance asterisk if applicable
+        if results['significant']:
+            max_val = max(medians) * 1.1
+            ax.text(0.5, max_val, '*', ha='center', va='bottom', fontsize=20)
+            
+        # Add test information
+        plt.figtext(0.5, 0.01, f"Mann-Whitney U = {results['u_statistic']:.1f}, p-value = {results['p_value']:.4f}", 
+                   ha='center', fontsize=12)
+        
+        sig_text = "Significant difference" if results['significant'] else "No significant difference"
+        plt.figtext(0.5, 0.04, f"{sig_text} (α={results['alpha']})", ha='center')
+        
+        plt.figtext(0.5, 0.07, f"Effect size: {results['effect_size']} (r = {results['effect_size_r']:.3f})", 
+                   ha='center')
+    
+    else:  # Kruskal-Wallis
+        # Visualization for Kruskal-Wallis test
+        fig, ax = plt.subplots(figsize=(12, 6))
+        
+        group_stats = results['group_stats']
+        
+        # Bar plot of medians
+        ax.bar(group_stats[results['group']], group_stats['median'], alpha=0.7)
+        ax.set_ylabel(f"Median {results['feature']}")
+        ax.set_title(f"Median of {results['feature']} by {results['group']}")
+        ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right')
+        
+        # Add test information
+        plt.figtext(0.5, 0.01, f"Kruskal-Wallis H = {results['h_statistic']:.2f}, p-value = {results['p_value']:.4f}", 
+                   ha='center', fontsize=12)
+        
+        sig_text = "Significant differences between groups" if results['significant'] else "No significant differences between groups"
+        plt.figtext(0.5, 0.04, f"{sig_text} (α={results['alpha']})", ha='center')
+        
+        plt.figtext(0.5, 0.07, f"Effect size: {results['effect_size']} (η² = {results['eta_squared']:.3f})", 
+                   ha='center')
+    
+    plt.tight_layout()
+    plt.subplots_adjust(bottom=0.15)
     
     return fig
