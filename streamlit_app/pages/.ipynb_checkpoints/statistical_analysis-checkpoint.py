@@ -1,4 +1,3 @@
-# streamlit_app/pages/statistical_analysis.py
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -6,6 +5,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 import sys
+import traceback
 
 # Add the parent directory to path if running this file directly
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
@@ -25,7 +25,6 @@ def show_statistical_analysis():
     if 'data' not in st.session_state or st.session_state.data is None:
         st.warning("Please upload data first.")
         return
-    
     # Check if data is processed
     if 'processed_data' not in st.session_state or st.session_state.processed_data is None:
         st.warning("Please process your data first.")
@@ -51,12 +50,12 @@ def show_statistical_analysis():
         # 2. A binary categorical grouping variable
         
         # Get numeric features
-        numeric_features = [col for col in selected_features 
-                          if data[col].dtype in ['int64', 'float64'] 
+        numeric_features = [col for col in selected_features
+                          if data[col].dtype in ['int64', 'float64']
                           or st.session_state.data_types.get(col) in ['integer', 'float', 'numeric']]
         
         # Get binary categorical features
-        binary_features = [col for col in data.columns 
+        binary_features = [col for col in data.columns
                          if data[col].nunique() == 2]
         
         # Select feature and grouping variable
@@ -67,7 +66,7 @@ def show_statistical_analysis():
             default_group = target_column
         else:
             default_group = binary_features[0] if binary_features else None
-        
+            
         if default_group:
             grouping_variable = st.selectbox(
                 "Select grouping variable (must be binary)",
@@ -99,13 +98,11 @@ def show_statistical_analysis():
                                 label=f"Mean for {ttest_results['groups'][0]}",
                                 value=f"{ttest_results['group1_mean']:.3f}"
                             )
-                        
                         with col2:
                             st.metric(
                                 label=f"Mean for {ttest_results['groups'][1]}",
                                 value=f"{ttest_results['group2_mean']:.3f}"
                             )
-                        
                         with col3:
                             st.metric(
                                 label="Mean Difference",
@@ -128,20 +125,20 @@ def show_statistical_analysis():
                         # Visualize the results
                         fig = visualize_t_test(ttest_results)
                         st.pyplot(fig)
+                        plt.close(fig)  # Close the figure to prevent interference
                         
                         # Store the results for the report
                         if 'statistical_tests' not in st.session_state.report_data:
                             st.session_state.report_data['statistical_tests'] = {}
-                        
                         test_key = f"ttest_{numeric_feature}_by_{grouping_variable}"
                         st.session_state.report_data['statistical_tests'][test_key] = {
                             'type': 't-test',
                             'results': ttest_results,
                             'description': f"T-test comparing {numeric_feature} means between {grouping_variable} groups"
                         }
-                        
                 except Exception as e:
                     st.error(f"Error performing t-test: {str(e)}")
+                    st.code(traceback.format_exc())
         else:
             st.warning("No binary categorical variables found for grouping. T-test requires a binary grouping variable.")
     
@@ -153,8 +150,8 @@ def show_statistical_analysis():
         # 1. Two categorical variables
         
         # Get categorical features
-        categorical_features = [col for col in data.columns 
-                              if data[col].dtype == 'object' 
+        categorical_features = [col for col in data.columns
+                              if data[col].dtype == 'object'
                               or st.session_state.data_types.get(col) in ['categorical', 'boolean']]
         
         # Select feature and target
@@ -162,10 +159,9 @@ def show_statistical_analysis():
             default_target = target_column
         else:
             default_target = categorical_features[0] if categorical_features else None
-        
+            
         if categorical_features and default_target:
             categorical_feature = st.selectbox("Select categorical feature", categorical_features, key="chisq_feature")
-            
             categorical_target = st.selectbox(
                 "Select categorical target",
                 [col for col in categorical_features if col != categorical_feature],
@@ -195,13 +191,11 @@ def show_statistical_analysis():
                                 label="Chi-Square Statistic",
                                 value=f"{chisq_results['chi2']:.3f}"
                             )
-                        
                         with col2:
                             st.metric(
                                 label="p-value",
                                 value=f"{chisq_results['p_value']:.4f}"
                             )
-                        
                         with col3:
                             st.metric(
                                 label="Cramer's V",
@@ -219,6 +213,7 @@ def show_statistical_analysis():
                         # Visualize the results
                         fig = visualize_chi_square(chisq_results)
                         st.pyplot(fig)
+                        plt.close(fig)  # Close the figure to prevent interference
                         
                         # Display contingency table
                         st.markdown("### Contingency Table")
@@ -227,16 +222,15 @@ def show_statistical_analysis():
                         # Store the results for the report
                         if 'statistical_tests' not in st.session_state.report_data:
                             st.session_state.report_data['statistical_tests'] = {}
-                        
                         test_key = f"chisq_{categorical_feature}_by_{categorical_target}"
                         st.session_state.report_data['statistical_tests'][test_key] = {
                             'type': 'chi-square',
                             'results': chisq_results,
                             'description': f"Chi-square test of association between {categorical_feature} and {categorical_target}"
                         }
-                        
                 except Exception as e:
                     st.error(f"Error performing chi-square test: {str(e)}")
+                    st.code(traceback.format_exc())
         else:
             st.warning("Not enough categorical variables found. Chi-square test requires two categorical variables.")
     
@@ -249,20 +243,19 @@ def show_statistical_analysis():
         # 2. A categorical grouping variable with 3+ groups
         
         # Get numeric features
-        numeric_features = [col for col in selected_features 
-                          if data[col].dtype in ['int64', 'float64'] 
+        numeric_features = [col for col in selected_features
+                          if data[col].dtype in ['int64', 'float64']
                           or st.session_state.data_types.get(col) in ['integer', 'float', 'numeric']]
         
         # Get categorical features with 3+ groups
-        multi_cat_features = [col for col in data.columns 
-                            if data[col].nunique() >= 3 
-                            and (data[col].dtype == 'object' 
+        multi_cat_features = [col for col in data.columns
+                            if data[col].nunique() >= 3
+                            and (data[col].dtype == 'object'
                                 or st.session_state.data_types.get(col) in ['categorical'])]
         
         # Select feature and grouping variable
         if numeric_features and multi_cat_features:
             numeric_feature = st.selectbox("Select numeric feature for ANOVA", numeric_features, key="anova_numeric")
-            
             grouping_variable = st.selectbox(
                 "Select grouping variable (3+ categories)",
                 multi_cat_features,
@@ -295,13 +288,11 @@ def show_statistical_analysis():
                                 label="F-statistic",
                                 value=f"{anova_results['f_statistic']:.3f}"
                             )
-                        
                         with col2:
                             st.metric(
                                 label="p-value",
                                 value=f"{anova_results['p_value']:.4f}"
                             )
-                        
                         with col3:
                             st.metric(
                                 label="Eta-squared",
@@ -319,6 +310,7 @@ def show_statistical_analysis():
                         # Visualize the results
                         fig = visualize_anova(anova_results)
                         st.pyplot(fig)
+                        plt.close(fig)  # Close the figure to prevent interference
                         
                         # Display group statistics
                         st.markdown("### Group Statistics")
@@ -332,16 +324,15 @@ def show_statistical_analysis():
                         # Store the results for the report
                         if 'statistical_tests' not in st.session_state.report_data:
                             st.session_state.report_data['statistical_tests'] = {}
-                        
                         test_key = f"anova_{numeric_feature}_by_{grouping_variable}"
                         st.session_state.report_data['statistical_tests'][test_key] = {
                             'type': 'anova',
                             'results': anova_results,
                             'description': f"ANOVA test comparing {numeric_feature} means across {grouping_variable} groups"
                         }
-                        
                 except Exception as e:
                     st.error(f"Error performing ANOVA test: {str(e)}")
+                    st.code(traceback.format_exc())
         else:
             if not numeric_features:
                 st.warning("No numeric features found. ANOVA requires a numeric feature.")
@@ -350,13 +341,12 @@ def show_statistical_analysis():
     
     with tab4:
         st.markdown("<div class='subheader'>Correlation Analysis</div>", unsafe_allow_html=True)
-        
         if target_type in ['numeric', 'time']:
             st.markdown("<div class='info-text'>Analyze correlations between numeric features and the target variable.</div>", unsafe_allow_html=True)
             
             # Get numeric features
-            numeric_features = [col for col in selected_features 
-                              if data[col].dtype in ['int64', 'float64'] 
+            numeric_features = [col for col in selected_features
+                              if data[col].dtype in ['int64', 'float64']
                               or st.session_state.data_types.get(col) in ['integer', 'float', 'numeric']]
             
             if numeric_features:
@@ -384,30 +374,103 @@ def show_statistical_analysis():
                                 st.markdown("### Correlation Summary")
                                 st.dataframe(corr_results['summary'])
                                 
-                                # Visualize correlations
-                                fig = visualize_correlation_analysis(corr_results)
+                                # Add clear separation
+                                st.markdown("---")
+                                st.markdown("### Correlation Visualization")
+                                
+                                # Visualize correlations with better layout
+                                fig = plt.figure(figsize=(12, 15))
+                                
+                                # Extract data from results for visualization
+                                features = [feat for feat in selected_corr_features if "error" not in corr_results[feat]]
+                                correlations = [corr_results[feat]['correlation'] for feat in features]
+                                p_values = [corr_results[feat]['p_value'] for feat in features]
+                                significant = [corr_results[feat]['significant'] for feat in features]
+                                
+                                # Sort by absolute correlation
+                                sorted_indices = np.argsort(np.abs(correlations))[::-1]
+                                features = [features[i] for i in sorted_indices]
+                                correlations = [correlations[i] for i in sorted_indices]
+                                p_values = [p_values[i] for i in sorted_indices]
+                                significant = [significant[i] for i in sorted_indices]
+                                
+                                # Use GridSpec for better layout control
+                                from matplotlib.gridspec import GridSpec
+                                gs = GridSpec(2, 1, height_ratios=[1, 2], figure=fig)
+                                
+                                # Plot 1: Correlation bar chart (in the top section)
+                                ax1 = fig.add_subplot(gs[0])
+                                colors = ['#1e88e5' if sig else '#d1d1d1' for sig in significant]
+                                ax1.barh(features, correlations, color=colors)
+                                ax1.axvline(x=0, color='black', linestyle='-', alpha=0.3)
+                                ax1.set_title(f"Correlation with {target_column}")
+                                ax1.set_xlabel('Pearson Correlation Coefficient')
+                                
+                                # Add correlation values as text
+                                for i, v in enumerate(correlations):
+                                    ax1.text(v + np.sign(v)*0.01, i, f"{v:.3f}", va='center')
+                                
+                                # Plot 2: Scatter plots for top features (in the bottom section)
+                                if len(features) > 0:
+                                    num_plots = min(4, len(features))
+                                    # Create a separate GridSpec for the scatter plots in the bottom section
+                                    gs_bottom = GridSpec(2, 2, top=0.65, bottom=0.05, left=0.05, right=0.95, hspace=0.3, wspace=0.3, figure=fig)
+                                    
+                                    for i in range(num_plots):
+                                        feature = features[i]
+                                        result = corr_results[feature]
+                                        feat_data = result['data']
+                                        
+                                        # Calculate grid position
+                                        row, col = divmod(i, 2)
+                                        ax = fig.add_subplot(gs_bottom[row, col])
+                                        
+                                        # Create scatter plot
+                                        sns.regplot(x=feat_data[feature], y=feat_data[target_column], ax=ax, scatter_kws={'alpha': 0.5})
+                                        ax.set_title(f"{feature} vs {target_column} (r={result['correlation']:.3f})")
+                                        
+                                        # Add correlation text
+                                        text = f"r = {result['correlation']:.3f}\np = {result['p_value']:.3e}\n"
+                                        text += f"Effect: {result['effect_size']}"
+                                        
+                                        # Position text based on correlation direction
+                                        if result['correlation'] < 0:
+                                            ax.text(0.95, 0.95, text, transform=ax.transAxes,
+                                                   ha='right', va='top', bbox=dict(boxstyle='round', alpha=0.1))
+                                        else:
+                                            ax.text(0.05, 0.95, text, transform=ax.transAxes,
+                                                   ha='left', va='top', bbox=dict(boxstyle='round', alpha=0.1))
+                                
+                                # Add more space between plots
+                                plt.tight_layout(pad=3.0)
+                                
+                                # Display the plot
                                 st.pyplot(fig)
+                                
+                                # Clear the matplotlib figure
+                                plt.close(fig)
+                                
+                                # Add additional space before next section
+                                st.markdown("---")
                                 
                                 # Show individual correlations
                                 st.markdown("### Detailed Correlation Results")
-                                
                                 for feature in selected_corr_features:
                                     if "error" not in corr_results[feature]:
                                         result = corr_results[feature]
+                                        st.markdown(f"#### Correlation with {feature}")
                                         
                                         col1, col2, col3 = st.columns(3)
                                         with col1:
                                             st.metric(
-                                                label=f"Correlation with {feature}",
+                                                label=f"Correlation",
                                                 value=f"{result['correlation']:.3f}"
                                             )
-                                        
                                         with col2:
                                             st.metric(
                                                 label="p-value",
                                                 value=f"{result['p_value']:.4f}"
                                             )
-                                        
                                         with col3:
                                             st.metric(
                                                 label="R²",
@@ -427,15 +490,14 @@ def show_statistical_analysis():
                                 # Store the results for the report
                                 if 'statistical_tests' not in st.session_state.report_data:
                                     st.session_state.report_data['statistical_tests'] = {}
-                                
                                 st.session_state.report_data['statistical_tests']['correlation_analysis'] = {
                                     'type': 'correlation',
                                     'results': corr_results,
                                     'description': f"Correlation analysis between numeric features and {target_column}"
                                 }
-                                
                         except Exception as e:
                             st.error(f"Error performing correlation analysis: {str(e)}")
+                            st.code(traceback.format_exc())
                 else:
                     st.warning("Please select at least one feature for correlation analysis.")
             else:
@@ -447,8 +509,8 @@ def show_statistical_analysis():
             st.markdown("### Alternative: Feature Importance Analysis")
             
             # Get numeric features
-            numeric_features = [col for col in selected_features 
-                              if data[col].dtype in ['int64', 'float64'] 
+            numeric_features = [col for col in selected_features
+                              if data[col].dtype in ['int64', 'float64']
                               or st.session_state.data_types.get(col) in ['integer', 'float', 'numeric']]
             
             if numeric_features:
@@ -479,26 +541,42 @@ def show_statistical_analysis():
                             st.markdown("### Feature Importance Results")
                             st.dataframe(feature_imp)
                             
-                            # Visualize feature importance
-                            fig, ax = plt.subplots(figsize=(10, 6))
+                            # Create a new figure with good sizing
+                            fig = plt.figure(figsize=(10, 8))
+                            ax = fig.add_subplot(111)
+                            
+                            # Plot the bar chart
                             feature_imp.plot(kind='bar', x='Feature', y='Importance', ax=ax)
-                            plt.title('Feature Importance for Predicting ' + target_column)
-                            plt.ylabel('Importance Score')
+                            ax.set_title('Feature Importance for Predicting ' + target_column)
+                            ax.set_ylabel('Importance Score')
+                            ax.set_xlabel('')
+                            
+                            # Rotate x-axis labels for better readability
+                            plt.xticks(rotation=45, ha='right')
+                            
+                            # Add more space at the bottom for labels
+                            plt.subplots_adjust(bottom=0.25)
+                            
+                            # Ensure tight layout
                             plt.tight_layout()
+                            
+                            # Display the plot
                             st.pyplot(fig)
+                            
+                            # Clear the matplotlib figure
+                            plt.close(fig)
                             
                             # Store the results for the report
                             if 'statistical_tests' not in st.session_state.report_data:
                                 st.session_state.report_data['statistical_tests'] = {}
-                            
                             st.session_state.report_data['statistical_tests']['feature_importance'] = {
                                 'type': 'feature_importance',
                                 'results': feature_imp,
                                 'description': f"Feature importance analysis for predicting {target_column}"
                             }
-                            
                     except Exception as e:
                         st.error(f"Error analyzing feature importance: {str(e)}")
+                        st.code(traceback.format_exc())
             else:
                 st.warning("No numeric features found. Feature importance analysis requires numeric features.")
 

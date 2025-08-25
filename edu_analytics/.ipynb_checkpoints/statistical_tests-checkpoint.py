@@ -731,12 +731,10 @@ def numerical_correlation_analysis(
 def visualize_correlation_analysis(results: Dict) -> plt.Figure:
     """
     Create visualization for correlation analysis results.
-    
     Parameters:
     -----------
     results : Dict
         Dictionary containing correlation analysis results
-        
     Returns:
     --------
     matplotlib Figure
@@ -754,10 +752,15 @@ def visualize_correlation_analysis(results: Dict) -> plt.Figure:
     p_values = [p_values[i] for i in sorted_indices]
     significant = [significant[i] for i in sorted_indices]
     
-    # Create figure
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 8))
+    # Create figure with more space
+    fig = plt.figure(figsize=(12, 15))
     
-    # Plot 1: Correlation bar chart
+    # Use GridSpec for better layout control
+    from matplotlib.gridspec import GridSpec
+    gs = GridSpec(2, 1, height_ratios=[1, 2])
+    
+    # Plot 1: Correlation bar chart (in the top section)
+    ax1 = fig.add_subplot(gs[0])
     colors = ['#1e88e5' if sig else '#d1d1d1' for sig in significant]
     ax1.barh(features, correlations, color=colors)
     ax1.axvline(x=0, color='black', linestyle='-', alpha=0.3)
@@ -768,17 +771,25 @@ def visualize_correlation_analysis(results: Dict) -> plt.Figure:
     for i, v in enumerate(correlations):
         ax1.text(v + np.sign(v)*0.01, i, f"{v:.3f}", va='center')
     
-    # Plot 2: Scatter plots for top 4 features
+    # Plot 2: Scatter plots for top features (in the bottom section)
     if len(features) > 0:
         num_plots = min(4, len(features))
-        if num_plots == 1:
-            feature = features[0]
+        # Create a separate GridSpec for the scatter plots in the bottom section
+        gs_bottom = GridSpec(2, 2, top=0.65, bottom=0.05, left=0.05, right=0.95, hspace=0.3, wspace=0.3)
+        
+        for i in range(num_plots):
+            feature = features[i]
             result = results[feature]
             data = result['data']
             
+            # Calculate grid position
+            row, col = divmod(i, 2)
+            ax = fig.add_subplot(gs_bottom[row, col])
+            
             # Create scatter plot
-            sns.regplot(x=data[feature], y=data[result['target']], ax=ax2, scatter_kws={'alpha': 0.5})
-            ax2.set_title(f"{feature} vs {result['target']} (r={result['correlation']:.3f})")
+            import seaborn as sns
+            sns.regplot(x=data[feature], y=data[result['target']], ax=ax, scatter_kws={'alpha': 0.5})
+            ax.set_title(f"{feature} vs {result['target']} (r={result['correlation']:.3f})")
             
             # Add correlation text
             text = f"r = {result['correlation']:.3f}\np = {result['p_value']:.3e}\n"
@@ -786,44 +797,14 @@ def visualize_correlation_analysis(results: Dict) -> plt.Figure:
             
             # Position text based on correlation direction
             if result['correlation'] < 0:
-                ax2.text(0.95, 0.95, text, transform=ax2.transAxes, 
+                ax.text(0.95, 0.95, text, transform=ax.transAxes,
                        ha='right', va='top', bbox=dict(boxstyle='round', alpha=0.1))
             else:
-                ax2.text(0.05, 0.95, text, transform=ax2.transAxes, 
+                ax.text(0.05, 0.95, text, transform=ax.transAxes,
                        ha='left', va='top', bbox=dict(boxstyle='round', alpha=0.1))
-        else:
-            # Create subplot grid for multiple features
-            from matplotlib.gridspec import GridSpec
-            gs = GridSpec(2, 2, figure=fig)
-            ax2.remove()  # Remove the original ax2
-            
-            for i in range(num_plots):
-                feature = features[i]
-                result = results[feature]
-                data = result['data']
-                
-                # Create subplot
-                row, col = divmod(i, 2)
-                ax = fig.add_subplot(gs[row, col])
-                
-                # Create scatter plot
-                sns.regplot(x=data[feature], y=data[result['target']], ax=ax, scatter_kws={'alpha': 0.5})
-                ax.set_title(f"{feature} vs {result['target']} (r={result['correlation']:.3f})")
-                
-                # Add correlation text
-                text = f"r = {result['correlation']:.3f}\np = {result['p_value']:.3e}\n"
-                text += f"Effect: {result['effect_size']}"
-                
-                # Position text based on correlation direction
-                if result['correlation'] < 0:
-                    ax.text(0.95, 0.95, text, transform=ax.transAxes, 
-                           ha='right', va='top', bbox=dict(boxstyle='round', alpha=0.1))
-                else:
-                    ax.text(0.05, 0.95, text, transform=ax.transAxes, 
-                           ha='left', va='top', bbox=dict(boxstyle='round', alpha=0.1))
     
-    plt.tight_layout()
-    
+    # Add more space between plots
+    plt.tight_layout(pad=3.0)
     return fig
 
 def perform_nonparametric_test(
