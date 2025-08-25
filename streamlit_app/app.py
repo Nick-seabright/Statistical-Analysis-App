@@ -146,36 +146,32 @@ def main():
     
     # Show different sections based on sidebar selection
     if st.session_state.current_section == "data_upload":
-        from pages.data_upload import show_data_upload
+        from streamlit_app.pages.data_upload import show_data_upload
         show_data_upload()
     
     elif st.session_state.current_section == "data_exploration":
-        from pages.data_exploration import show_data_exploration
+        from streamlit_app.pages.data_exploration import show_data_exploration
         show_data_exploration()
     
     elif st.session_state.current_section == "statistical_analysis":
-        from pages.statistical_analysis import show_statistical_analysis
+        from streamlit_app.pages.statistical_analysis import show_statistical_analysis
         show_statistical_analysis()
     
     elif st.session_state.current_section == "threshold_analysis":
-        from pages.threshold_analysis import show_threshold_analysis
+        from streamlit_app.pages.threshold_analysis import show_threshold_analysis
         show_threshold_analysis()
     
     elif st.session_state.current_section == "model_training":
-        from pages.model_training import show_model_training
+        from streamlit_app.pages.model_training import show_model_training
         show_model_training()
     
     elif st.session_state.current_section == "predictions":
-        from pages.predictions import show_predictions
+        from streamlit_app.pages.predictions import show_predictions
         show_predictions()
     
     elif st.session_state.current_section == "report_generation":
-        from pages.report_generation import show_report_generation
+        from streamlit_app.pages.report_generation import show_report_generation
         show_report_generation()
-    
-    elif st.session_state.current_section == "file_management":
-        from pages.file_management import show_file_management
-        show_file_management()
 
 # Sidebar creation
 def create_sidebar():
