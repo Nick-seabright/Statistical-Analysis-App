@@ -71,7 +71,7 @@ def create_sidebar():
             # Clear all session state
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
-            st.experimental_rerun()
+            st.rerun()
         
         # Add version info
         st.markdown("---")
