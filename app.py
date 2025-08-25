@@ -177,24 +177,7 @@ def main():
 # Sidebar creation
 def create_sidebar():
     with st.sidebar:
-        try:
-            # Try multiple paths to find the logo
-            logo_paths = [
-                "streamlit_app/assets/logo.png",
-                os.path.join(os.path.dirname(__file__), "streamlit_app/assets/logo.png"),
-                os.path.join(os.path.dirname(os.path.dirname(__file__)), "streamlit_app/assets/logo.png")
-            ]
-            
-            logo_loaded = False
-            for path in logo_paths:
-                try:
-                    st.image(path, width=150)
-                    logo_loaded = True
-                    break
-                except:
-                    continue
-        except Exception:
-            pass  # Continue without logo
+        st.title("Navigation")
         
         # Initialize current section in session state if not exists
         if 'current_section' not in st.session_state:

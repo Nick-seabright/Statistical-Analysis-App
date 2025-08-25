@@ -37,6 +37,7 @@ from edu_analytics.utils import (
     get_save_path,
     get_timestamped_filename
 )
+from streamlit_app.components.sidebar import create_sidebar
 
 # Set page configuration
 st.set_page_config(
@@ -176,7 +177,6 @@ def main():
 # Sidebar creation
 def create_sidebar():
     with st.sidebar:
-        st.image("streamlit_app/assets/logo.png", width=150)
         st.title("Navigation")
         
         # Initialize current section in session state if not exists
