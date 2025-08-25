@@ -129,20 +129,64 @@ def show_data_upload():
         
         if sample_data_option != "None" and st.button("Load Sample Data"):
             try:
-                # Load sample data based on selection
-                if sample_data_option == "Student Performance":
-                    # Load student performance data
-                    df = pd.read_csv("data/samples/student_performance.csv")
-                elif sample_data_option == "Employee Attrition":
-                    # Load employee attrition data
-                    df = pd.read_csv("data/samples/employee_attrition.csv")
-                elif sample_data_option == "Housing Prices":
-                    # Load housing prices data
-                    df = pd.read_csv("data/samples/housing_prices.csv")
+                # Use more flexible path handling for sample data
+                sample_data_folder = "data/samples"
+                # Try multiple possible locations
+                possible_paths = [
+                    os.path.join(sample_data_folder, f"{sample_data_option.lower().replace(' ', '_')}.csv"),
+                    os.path.join("streamlit_app", sample_data_folder, f"{sample_data_option.lower().replace(' ', '_')}.csv"),
+                    os.path.join(os.path.dirname(os.path.dirname(__file__)), sample_data_folder, 
+                                f"{sample_data_option.lower().replace(' ', '_')}.csv")
+                ]
+                
+                df = None
+                for path in possible_paths:
+                    try:
+                        if os.path.exists(path):
+                            df = pd.read_csv(path)
+                            break
+                    except:
+                        continue
+                        
+                if df is None:
+                    # If file not found, use demo data instead
+                    if sample_data_option == "Student Performance":
+                        # Create simple student performance demo data
+                        df = pd.DataFrame({
+                            'student_id': range(1, 101),
+                            'hours_studied': np.random.randint(1, 10, 100),
+                            'attendance_pct': np.random.randint(60, 100, 100),
+                            'previous_gpa': np.random.uniform(2.0, 4.0, 100).round(2),
+                            'final_grade': np.random.randint(50, 100, 100)
+                        })
+                    elif sample_data_option == "Employee Attrition":
+                        # Create simple employee attrition demo data
+                        df = pd.DataFrame({
+                            'employee_id': range(1, 101),
+                            'age': np.random.randint(22, 60, 100),
+                            'salary': np.random.randint(30000, 120000, 100),
+                            'years_at_company': np.random.randint(0, 20, 100),
+                            'satisfaction_score': np.random.randint(1, 10, 100),
+                            'left_company': np.random.choice(['Yes', 'No'], 100, p=[0.3, 0.7])
+                        })
+                    elif sample_data_option == "Housing Prices":
+                        # Create simple housing prices demo data
+                        df = pd.DataFrame({
+                            'house_id': range(1, 101),
+                            'square_feet': np.random.randint(800, 4000, 100),
+                            'bedrooms': np.random.randint(1, 6, 100),
+                            'bathrooms': np.random.choice([1, 1.5, 2, 2.5, 3, 3.5, 4], 100),
+                            'age_years': np.random.randint(0, 50, 100),
+                            'price': np.random.randint(100000, 1000000, 100)
+                        })
+                    else:
+                        st.error(f"Unknown sample data option: {sample_data_option}")
+                        return
+                        
+                    st.info(f"Generated demo {sample_data_option} data as sample file wasn't found.")
                 
                 # Store in session state
                 st.session_state.data = df
-                
                 # Refresh page to show the loaded data
                 st.experimental_rerun()
             except Exception as e:
