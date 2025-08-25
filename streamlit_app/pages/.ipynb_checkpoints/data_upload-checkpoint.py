@@ -148,7 +148,6 @@ def show_data_upload():
                         'previous_gpa': np.random.uniform(2.0, 4.0, 100).round(2),
                         'final_grade': np.random.randint(50, 100, 100)
                     })
-                    # Instead of auto-selecting target, just suggest it in the UI
                     suggested_target = "final_grade"
                     
                 elif sample_data_option == "Employee Attrition":
@@ -182,6 +181,9 @@ def show_data_upload():
                 # Store in session state
                 st.session_state.data = df
                 
+                # Store suggested target in session state for persistence
+                st.session_state.suggested_target = suggested_target
+                
                 # Analyze data types for all columns
                 data_types = {}
                 for column in df.columns:
@@ -198,72 +200,86 @@ def show_data_upload():
                 st.markdown("<div class='subheader'>Data Preview</div>", unsafe_allow_html=True)
                 st.dataframe(df.head(10))
                 
-                # Target selection
-                st.markdown("<div class='subheader'>Select Target Variable</div>", unsafe_allow_html=True)
-                target_column = st.selectbox("Choose your target variable", df.columns, index=df.columns.get_loc(suggested_target))
+                # Force a rerun to ensure the selectbox is displayed with the new data
+                st.rerun()
                 
-                # Feature selection
-                st.markdown("<div class='subheader'>Select Features</div>", unsafe_allow_html=True)
-                st.markdown("<div class='info-text'>Select the features you want to use for analysis.</div>", unsafe_allow_html=True)
-                all_features = st.checkbox("Select All Features", value=True)
-                if all_features:
-                    selected_features = [col for col in df.columns if col != target_column]
-                else:
-                    selected_features = st.multiselect(
-                        "Choose your features",
-                        [col for col in df.columns if col != target_column],
-                        default=[col for col in df.columns if col != target_column][:5]  # Default select first 5 features
-                    )
-                
-                # Process data button
-                if st.button("Process Data", key="process_sample_data"):
-                    with st.spinner("Processing data..."):
-                        try:
-                            # Process the data
-                            X, y, categorical_encoders, target_type, target_mapping, scaler, original_target = prepare_data(
-                                df, target_column, selected_features, data_types
-                            )
-                            
-                            # Save processed data in session state
-                            st.session_state.processed_data = {
-                                'X': X,
-                                'y': y,
-                                'target_column': target_column,
-                                'selected_features': selected_features,
-                                'original_target': original_target
-                            }
-                            
-                            # Save important metadata
-                            st.session_state.target_type = target_type
-                            st.session_state.target_mapping = target_mapping
-                            st.session_state.scaler = scaler
-                            st.session_state.categorical_encoders = categorical_encoders
-                            
-                            # Initialize report_data if it doesn't exist
-                            if 'report_data' not in st.session_state:
-                                st.session_state.report_data = {
-                                    'statistical_tests': {},
-                                    'threshold_analysis': {},
-                                    'model_training': {},
-                                    'model_evaluation': {},
-                                    'predictions': [],
-                                    'batch_predictions': []
-                                }
-                            
-                            # Show success message
-                            st.success(f"Data processed successfully! Target '{target_column}' detected as {target_type} type.")
-                            
-                            # Navigate to data exploration
-                            st.session_state.current_section = "data_exploration"
-                            st.rerun()
-                            
-                        except Exception as e:
-                            st.error(f"Error processing data: {str(e)}")
-                            st.code(traceback.format_exc())
-                            
             except Exception as e:
                 st.error(f"Error generating sample data: {str(e)}")
                 st.code(traceback.format_exc())
+        
+        # Add this section outside the if condition to ensure it's always displayed when data exists
+        if 'data' in st.session_state and st.session_state.data is not None:
+            df = st.session_state.data
+            suggested_target = st.session_state.get('suggested_target', df.columns[-1])
+            
+            # Target selection - use the suggested target as the default
+            st.markdown("<div class='subheader'>Select Target Variable</div>", unsafe_allow_html=True)
+            target_column = st.selectbox(
+                "Choose your target variable", 
+                df.columns, 
+                index=df.columns.get_loc(suggested_target) if suggested_target in df.columns else 0
+            )
+            
+            # Feature selection
+            st.markdown("<div class='subheader'>Select Features</div>", unsafe_allow_html=True)
+            st.markdown("<div class='info-text'>Select the features you want to use for analysis.</div>", unsafe_allow_html=True)
+            all_features = st.checkbox("Select All Features", value=True)
+            if all_features:
+                selected_features = [col for col in df.columns if col != target_column]
+            else:
+                selected_features = st.multiselect(
+                    "Choose your features",
+                    [col for col in df.columns if col != target_column],
+                    default=[col for col in df.columns if col != target_column][:5]  # Default select first 5 features
+                )
+            
+            # Process data button - use a consistent key across all paths
+            if st.button("Process Data", key="process_all_data"):
+                with st.spinner("Processing data..."):
+                    try:
+                        data_types = st.session_state.data_types
+                        
+                        # Process the data
+                        X, y, categorical_encoders, target_type, target_mapping, scaler, original_target = prepare_data(
+                            df, target_column, selected_features, data_types
+                        )
+                        
+                        # Save processed data in session state
+                        st.session_state.processed_data = {
+                            'X': X,
+                            'y': y,
+                            'target_column': target_column,
+                            'selected_features': selected_features,
+                            'original_target': original_target
+                        }
+                        
+                        # Save important metadata
+                        st.session_state.target_type = target_type
+                        st.session_state.target_mapping = target_mapping
+                        st.session_state.scaler = scaler
+                        st.session_state.categorical_encoders = categorical_encoders
+                        
+                        # Initialize report_data if it doesn't exist
+                        if 'report_data' not in st.session_state:
+                            st.session_state.report_data = {
+                                'statistical_tests': {},
+                                'threshold_analysis': {},
+                                'model_training': {},
+                                'model_evaluation': {},
+                                'predictions': [],
+                                'batch_predictions': []
+                            }
+                        
+                        # Show success message
+                        st.success(f"Data processed successfully! Target '{target_column}' detected as {target_type} type.")
+                        
+                        # Navigate to data exploration
+                        st.session_state.current_section = "data_exploration"
+                        st.rerun()
+                        
+                    except Exception as e:
+                        st.error(f"Error processing data: {str(e)}")
+                        st.code(traceback.format_exc())
 
 if __name__ == "__main__":
     show_data_upload()
