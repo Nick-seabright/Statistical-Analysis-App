@@ -322,11 +322,25 @@ def show_threshold_analysis():
                         
                         # Get target for coloring
                         if target_type == 'categorical':
-                            target_for_plot = data[target_column]
+                            # Convert categorical target to numeric for coloring
+                            if data[target_column].dtype == 'object' or data[target_column].dtype.name == 'category':
+                                # Map categorical values to numbers
+                                unique_values = data[target_column].unique()
+                                target_mapping = {val: i for i, val in enumerate(unique_values)}
+                                target_for_plot = data[target_column].map(target_mapping)
+                                # Create a colormap with discrete colors for categories
+                                cmap = plt.cm.get_cmap('coolwarm', len(unique_values))
+                            else:
+                                # If it's already numeric, use as is
+                                target_for_plot = data[target_column]
+                                unique_values = np.unique(target_for_plot)
+                                cmap = 'coolwarm'
                         else:
                             # For numeric or time target, binarize around the median
                             target_median = data[target_column].median()
                             target_for_plot = (data[target_column] > target_median).astype(int)
+                            unique_values = [0, 1]
+                            cmap = 'coolwarm'
                         
                         # Check if features are time variables
                         is_time1 = st.session_state.data_types.get(feature1) == 'time'
@@ -347,49 +361,70 @@ def show_threshold_analysis():
                             x_data,
                             y_data,
                             c=target_for_plot,
-                            cmap='coolwarm',
+                            cmap=cmap,
                             alpha=0.6
                         )
                         
                         # Add threshold lines
                         threshold1_plot = convert_time_to_minutes(threshold1) if is_time1 else threshold1
                         threshold2_plot = convert_time_to_minutes(threshold2) if is_time2 else threshold2
-                        
                         plt.axvline(x=threshold1_plot, color='r', linestyle='--', alpha=0.7)
                         plt.axhline(y=threshold2_plot, color='r', linestyle='--', alpha=0.7)
                         
                         # Add quadrant labels
                         plt.text(
-                            x_data.min() + (threshold1_plot - x_data.min()) * 0.5, 
-                            threshold2_plot + (y_data.max() - threshold2_plot) * 0.5, 
+                            x_data.min() + (threshold1_plot - x_data.min()) * 0.5,
+                            threshold2_plot + (y_data.max() - threshold2_plot) * 0.5,
                             f"Above 1, Below 2\n{results.loc['Above 1, Below 2', 'target_1_rate']:.1%}",
                             ha='center', va='center',
                             bbox=dict(boxstyle='round', facecolor='white', alpha=0.7)
                         )
-                        
                         plt.text(
-                            threshold1_plot + (x_data.max() - threshold1_plot) * 0.5, 
-                            threshold2_plot + (y_data.max() - threshold2_plot) * 0.5, 
+                            threshold1_plot + (x_data.max() - threshold1_plot) * 0.5,
+                            threshold2_plot + (y_data.max() - threshold2_plot) * 0.5,
                             f"Above Both\n{results.loc['Above Both', 'target_1_rate']:.1%}",
                             ha='center', va='center',
                             bbox=dict(boxstyle='round', facecolor='white', alpha=0.7)
                         )
-                        
                         plt.text(
-                            threshold1_plot + (x_data.max() - threshold1_plot) * 0.5, 
-                            y_data.min() + (threshold2_plot - y_data.min()) * 0.5, 
+                            threshold1_plot + (x_data.max() - threshold1_plot) * 0.5,
+                            y_data.min() + (threshold2_plot - y_data.min()) * 0.5,
                             f"Below 1, Above 2\n{results.loc['Below 1, Above 2', 'target_1_rate']:.1%}",
                             ha='center', va='center',
                             bbox=dict(boxstyle='round', facecolor='white', alpha=0.7)
                         )
-                        
                         plt.text(
-                            x_data.min() + (threshold1_plot - x_data.min()) * 0.5, 
-                            y_data.min() + (threshold2_plot - y_data.min()) * 0.5, 
+                            x_data.min() + (threshold1_plot - x_data.min()) * 0.5,
+                            y_data.min() + (threshold2_plot - y_data.min()) * 0.5,
                             f"Below Both\n{results.loc['Below Both', 'target_1_rate']:.1%}",
                             ha='center', va='center',
                             bbox=dict(boxstyle='round', facecolor='white', alpha=0.7)
                         )
+                        
+                        # Create a legend for categorical targets
+                        if target_type == 'categorical' and len(unique_values) <= 10:  # Only for a reasonable number of categories
+                            # Create legend handles
+                            from matplotlib.lines import Line2D
+                            
+                            # If we have a mapping, use it, otherwise use values directly
+                            if 'target_mapping' in locals():
+                                legend_elements = [
+                                    Line2D([0], [0], marker='o', color='w', 
+                                           markerfacecolor=plt.cm.get_cmap(cmap)(target_mapping[val]/len(unique_values)) 
+                                              if hasattr(cmap, '__call__') else plt.cm.get_cmap(cmap)(i/len(unique_values)), 
+                                           markersize=10, label=str(val))
+                                    for i, val in enumerate(unique_values)
+                                ]
+                            else:
+                                legend_elements = [
+                                    Line2D([0], [0], marker='o', color='w', 
+                                           markerfacecolor=plt.cm.get_cmap(cmap)(i/len(unique_values)), 
+                                           markersize=10, label=str(val))
+                                    for i, val in enumerate(unique_values)
+                                ]
+                            
+                            # Add the legend to the plot - positioned in the upper right corner
+                            plt.legend(handles=legend_elements, title=target_column, loc='upper right')
                         
                         # Add labels and title
                         plt.colorbar(scatter, label='Target')
@@ -397,12 +432,14 @@ def show_threshold_analysis():
                         plt.ylabel(feature2)
                         plt.title(f'Custom Threshold Analysis: {feature1} vs {feature2}')
                         plt.tight_layout()
+                        
+                        # Display the plot
                         st.pyplot(fig)
+                        plt.close(fig)  # Close the figure to prevent interference
                         
                         # Store the analysis in the report data
                         if 'threshold_analysis' not in st.session_state.report_data:
                             st.session_state.report_data['threshold_analysis'] = {}
-                        
                         custom_key = f"custom_{feature1}_{threshold1}_X_{feature2}_{threshold2}"
                         st.session_state.report_data['threshold_analysis'][custom_key] = {
                             'type': 'custom_threshold',
@@ -414,10 +451,8 @@ def show_threshold_analysis():
                             'target': target_column,
                             'timestamp': pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
                         }
-                        
                 except Exception as e:
                     st.error(f"Error analyzing custom thresholds: {str(e)}")
-                    import traceback
                     st.code(traceback.format_exc())
 
 if __name__ == "__main__":

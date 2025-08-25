@@ -376,30 +376,25 @@ def show_statistical_analysis():
                                 
                                 # Add clear separation
                                 st.markdown("---")
-                                st.markdown("### Correlation Visualization")
                                 
-                                # Visualize correlations with better layout
-                                fig = plt.figure(figsize=(12, 15))
+                                # SECTION 1: Bar chart of correlations - in its own container
+                                st.markdown("### Correlation Coefficients")
                                 
-                                # Extract data from results for visualization
+                                # Extract data for visualization
                                 features = [feat for feat in selected_corr_features if "error" not in corr_results[feat]]
                                 correlations = [corr_results[feat]['correlation'] for feat in features]
-                                p_values = [corr_results[feat]['p_value'] for feat in features]
                                 significant = [corr_results[feat]['significant'] for feat in features]
                                 
                                 # Sort by absolute correlation
                                 sorted_indices = np.argsort(np.abs(correlations))[::-1]
                                 features = [features[i] for i in sorted_indices]
                                 correlations = [correlations[i] for i in sorted_indices]
-                                p_values = [p_values[i] for i in sorted_indices]
                                 significant = [significant[i] for i in sorted_indices]
                                 
-                                # Use GridSpec for better layout control
-                                from matplotlib.gridspec import GridSpec
-                                gs = GridSpec(2, 1, height_ratios=[1, 2], figure=fig)
+                                # Create and display the bar chart
+                                fig1 = plt.figure(figsize=(10, 6))
+                                ax1 = fig1.add_subplot(111)
                                 
-                                # Plot 1: Correlation bar chart (in the top section)
-                                ax1 = fig.add_subplot(gs[0])
                                 colors = ['#1e88e5' if sig else '#d1d1d1' for sig in significant]
                                 ax1.barh(features, correlations, color=colors)
                                 ax1.axvline(x=0, color='black', linestyle='-', alpha=0.3)
@@ -410,45 +405,186 @@ def show_statistical_analysis():
                                 for i, v in enumerate(correlations):
                                     ax1.text(v + np.sign(v)*0.01, i, f"{v:.3f}", va='center')
                                 
-                                # Plot 2: Scatter plots for top features (in the bottom section)
-                                if len(features) > 0:
-                                    num_plots = min(4, len(features))
-                                    # Create a separate GridSpec for the scatter plots in the bottom section
-                                    gs_bottom = GridSpec(2, 2, top=0.65, bottom=0.05, left=0.05, right=0.95, hspace=0.3, wspace=0.3, figure=fig)
+                                plt.tight_layout()
+                                st.pyplot(fig1)
+                                plt.close(fig1)  # Close the figure to prevent interference
+                                
+                                # Add spacing between visualizations
+                                st.markdown("---")
+                                
+                                # SECTION 2: Scatter plots - in separate containers
+                                st.markdown("### Detailed Correlations")
+                                
+                                # Extract data for visualization
+                                features = [feat for feat in selected_corr_features if "error" not in corr_results[feat]]
+                                if not features:
+                                    st.info("No valid features for correlation visualization.")
+                                else:
+                                    # Sort by absolute correlation
+                                    correlations = [corr_results[feat]['correlation'] for feat in features]
+                                    sorted_indices = np.argsort(np.abs(correlations))[::-1]
+                                    features = [features[i] for i in sorted_indices]
                                     
-                                    for i in range(num_plots):
-                                        feature = features[i]
-                                        result = corr_results[feature]
-                                        feat_data = result['data']
+                                    # Pagination system for features
+                                    plots_per_page = 4  # Show 4 plots per page
+                                    num_features = len(features)
+                                    num_pages = (num_features + plots_per_page - 1) // plots_per_page  # Ceiling division
+                                    
+                                    if num_pages > 1:
+                                        page_number = st.selectbox(
+                                            f"Page (showing 4 plots per page, {num_features} total features)",
+                                            options=list(range(1, num_pages + 1)),
+                                            format_func=lambda x: f"Page {x} of {num_pages}"
+                                        )
+                                        start_idx = (page_number - 1) * plots_per_page
+                                        end_idx = min(start_idx + plots_per_page, num_features)
+                                        current_features = features[start_idx:end_idx]
+                                        st.info(f"Showing correlations {start_idx+1}-{end_idx} of {num_features} total")
+                                    else:
+                                        current_features = features
+                                    
+                                    # Create a 2x2 grid for the current page using Streamlit columns
+                                    # First row
+                                    if len(current_features) > 0:
+                                        col1, col2 = st.columns(2)
                                         
-                                        # Calculate grid position
-                                        row, col = divmod(i, 2)
-                                        ax = fig.add_subplot(gs_bottom[row, col])
+                                        # First plot (top-left)
+                                        with col1:
+                                            feature = current_features[0]
+                                            result = corr_results[feature]
+                                            
+                                            fig = plt.figure(figsize=(6, 5))
+                                            ax = fig.add_subplot(111)
+                                            
+                                            sns.regplot(
+                                                x=result['data'][feature], 
+                                                y=result['data'][target_column], 
+                                                ax=ax, 
+                                                scatter_kws={'alpha': 0.5}
+                                            )
+                                            
+                                            ax.set_title(f"{feature} vs {target_column}\nr={result['correlation']:.3f}")
+                                            
+                                            # Add correlation text
+                                            text = f"r = {result['correlation']:.3f}\np = {result['p_value']:.3e}\n"
+                                            text += f"Effect: {result['effect_size']}"
+                                            
+                                            # Position text based on correlation direction
+                                            if result['correlation'] < 0:
+                                                ax.text(0.95, 0.95, text, transform=ax.transAxes,
+                                                       ha='right', va='top', bbox=dict(boxstyle='round', alpha=0.1))
+                                            else:
+                                                ax.text(0.05, 0.95, text, transform=ax.transAxes,
+                                                       ha='left', va='top', bbox=dict(boxstyle='round', alpha=0.1))
+                                            
+                                            plt.tight_layout(pad=2.0)
+                                            st.pyplot(fig)
+                                            plt.close(fig)
                                         
-                                        # Create scatter plot
-                                        sns.regplot(x=feat_data[feature], y=feat_data[target_column], ax=ax, scatter_kws={'alpha': 0.5})
-                                        ax.set_title(f"{feature} vs {target_column} (r={result['correlation']:.3f})")
+                                        # Second plot (top-right)
+                                        if len(current_features) > 1:
+                                            with col2:
+                                                feature = current_features[1]
+                                                result = corr_results[feature]
+                                                
+                                                fig = plt.figure(figsize=(6, 5))
+                                                ax = fig.add_subplot(111)
+                                                
+                                                sns.regplot(
+                                                    x=result['data'][feature], 
+                                                    y=result['data'][target_column], 
+                                                    ax=ax, 
+                                                    scatter_kws={'alpha': 0.5}
+                                                )
+                                                
+                                                ax.set_title(f"{feature} vs {target_column}\nr={result['correlation']:.3f}")
+                                                
+                                                # Add correlation text
+                                                text = f"r = {result['correlation']:.3f}\np = {result['p_value']:.3e}\n"
+                                                text += f"Effect: {result['effect_size']}"
+                                                
+                                                # Position text based on correlation direction
+                                                if result['correlation'] < 0:
+                                                    ax.text(0.95, 0.95, text, transform=ax.transAxes,
+                                                           ha='right', va='top', bbox=dict(boxstyle='round', alpha=0.1))
+                                                else:
+                                                    ax.text(0.05, 0.95, text, transform=ax.transAxes,
+                                                           ha='left', va='top', bbox=dict(boxstyle='round', alpha=0.1))
+                                                
+                                                plt.tight_layout(pad=2.0)
+                                                st.pyplot(fig)
+                                                plt.close(fig)
+                                    
+                                    # Second row
+                                    if len(current_features) > 2:
+                                        col3, col4 = st.columns(2)
                                         
-                                        # Add correlation text
-                                        text = f"r = {result['correlation']:.3f}\np = {result['p_value']:.3e}\n"
-                                        text += f"Effect: {result['effect_size']}"
+                                        # Third plot (bottom-left)
+                                        with col3:
+                                            feature = current_features[2]
+                                            result = corr_results[feature]
+                                            
+                                            fig = plt.figure(figsize=(6, 5))
+                                            ax = fig.add_subplot(111)
+                                            
+                                            sns.regplot(
+                                                x=result['data'][feature], 
+                                                y=result['data'][target_column], 
+                                                ax=ax, 
+                                                scatter_kws={'alpha': 0.5}
+                                            )
+                                            
+                                            ax.set_title(f"{feature} vs {target_column}\nr={result['correlation']:.3f}")
+                                            
+                                            # Add correlation text
+                                            text = f"r = {result['correlation']:.3f}\np = {result['p_value']:.3e}\n"
+                                            text += f"Effect: {result['effect_size']}"
+                                            
+                                            # Position text based on correlation direction
+                                            if result['correlation'] < 0:
+                                                ax.text(0.95, 0.95, text, transform=ax.transAxes,
+                                                       ha='right', va='top', bbox=dict(boxstyle='round', alpha=0.1))
+                                            else:
+                                                ax.text(0.05, 0.95, text, transform=ax.transAxes,
+                                                       ha='left', va='top', bbox=dict(boxstyle='round', alpha=0.1))
+                                            
+                                            plt.tight_layout(pad=2.0)
+                                            st.pyplot(fig)
+                                            plt.close(fig)
                                         
-                                        # Position text based on correlation direction
-                                        if result['correlation'] < 0:
-                                            ax.text(0.95, 0.95, text, transform=ax.transAxes,
-                                                   ha='right', va='top', bbox=dict(boxstyle='round', alpha=0.1))
-                                        else:
-                                            ax.text(0.05, 0.95, text, transform=ax.transAxes,
-                                                   ha='left', va='top', bbox=dict(boxstyle='round', alpha=0.1))
-                                
-                                # Add more space between plots
-                                plt.tight_layout(pad=3.0)
-                                
-                                # Display the plot
-                                st.pyplot(fig)
-                                
-                                # Clear the matplotlib figure
-                                plt.close(fig)
+                                        # Fourth plot (bottom-right)
+                                        if len(current_features) > 3:
+                                            with col4:
+                                                feature = current_features[3]
+                                                result = corr_results[feature]
+                                                
+                                                fig = plt.figure(figsize=(6, 5))
+                                                ax = fig.add_subplot(111)
+                                                
+                                                sns.regplot(
+                                                    x=result['data'][feature], 
+                                                    y=result['data'][target_column], 
+                                                    ax=ax, 
+                                                    scatter_kws={'alpha': 0.5}
+                                                )
+                                                
+                                                ax.set_title(f"{feature} vs {target_column}\nr={result['correlation']:.3f}")
+                                                
+                                                # Add correlation text
+                                                text = f"r = {result['correlation']:.3f}\np = {result['p_value']:.3e}\n"
+                                                text += f"Effect: {result['effect_size']}"
+                                                
+                                                # Position text based on correlation direction
+                                                if result['correlation'] < 0:
+                                                    ax.text(0.95, 0.95, text, transform=ax.transAxes,
+                                                           ha='right', va='top', bbox=dict(boxstyle='round', alpha=0.1))
+                                                else:
+                                                    ax.text(0.05, 0.95, text, transform=ax.transAxes,
+                                                           ha='left', va='top', bbox=dict(boxstyle='round', alpha=0.1))
+                                                
+                                                plt.tight_layout(pad=2.0)
+                                                st.pyplot(fig)
+                                                plt.close(fig)
                                 
                                 # Add additional space before next section
                                 st.markdown("---")

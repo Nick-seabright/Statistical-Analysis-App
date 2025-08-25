@@ -216,8 +216,29 @@ def create_sidebar():
             st.subheader("Dataset Info")
             st.write(f"Rows: {st.session_state.data.shape[0]}")
             st.write(f"Columns: {st.session_state.data.shape[1]}")
-            if st.session_state.target_type:
-                st.write(f"Target Type: {st.session_state.target_type}")
+            
+            # Display target variable info if processed data exists
+            if 'processed_data' in st.session_state and st.session_state.processed_data is not None:
+                target_column = st.session_state.processed_data.get('target_column', None)
+                if target_column:
+                    st.write(f"Target: **{target_column}**")
+                
+                # Display target type if available
+                if 'target_type' in st.session_state and st.session_state.target_type:
+                    target_type = st.session_state.target_type.capitalize()
+                    st.write(f"Target Type: {target_type}")
+                
+                # Display number of features
+                if 'selected_features' in st.session_state.processed_data:
+                    num_features = len(st.session_state.processed_data['selected_features'])
+                    st.write(f"Features: {num_features}")
+                    
+                    # Option to show all selected features
+                    if st.checkbox("Show selected features", value=False):
+                        features = st.session_state.processed_data['selected_features']
+                        st.write(", ".join(features[:5]) + ("..." if len(features) > 5 else ""))
+                        if len(features) > 5:
+                            st.expander("All features").write(", ".join(features))
                 
         # Add helpful resources
         st.markdown("---")
