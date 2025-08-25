@@ -127,112 +127,112 @@ def show_data_upload():
             ["None", "Student Performance", "Employee Attrition", "Housing Prices"]
         )
         
-if sample_data_option != "None" and st.button("Load Sample Data"):
-    try:
-        # Generate sample data directly without trying to load files
-        df = None
-        
-        if sample_data_option == "Student Performance":
-            # Create student performance demo data
-            df = pd.DataFrame({
-                'student_id': range(1, 101),
-                'hours_studied': np.random.randint(1, 10, 100),
-                'attendance_pct': np.random.randint(60, 100, 100),
-                'previous_gpa': np.random.uniform(2.0, 4.0, 100).round(2),
-                'final_grade': np.random.randint(50, 100, 100)
-            })
-            target_column = "final_grade"
-            
-        elif sample_data_option == "Employee Attrition":
-            # Create employee attrition demo data
-            df = pd.DataFrame({
-                'employee_id': range(1, 101),
-                'age': np.random.randint(22, 60, 100),
-                'salary': np.random.randint(30000, 120000, 100),
-                'years_at_company': np.random.randint(0, 20, 100),
-                'satisfaction_score': np.random.randint(1, 10, 100),
-                'left_company': np.random.choice(['Yes', 'No'], 100, p=[0.3, 0.7])
-            })
-            target_column = "left_company"
-            
-        elif sample_data_option == "Housing Prices":
-            # Create housing prices demo data
-            df = pd.DataFrame({
-                'house_id': range(1, 101),
-                'square_feet': np.random.randint(800, 4000, 100),
-                'bedrooms': np.random.randint(1, 6, 100),
-                'bathrooms': np.random.choice([1, 1.5, 2, 2.5, 3, 3.5, 4], 100),
-                'age_years': np.random.randint(0, 50, 100),
-                'price': np.random.randint(100000, 1000000, 100)
-            })
-            target_column = "price"
-            
-        else:
-            st.error(f"Unknown sample data option: {sample_data_option}")
-            return
-        
-        # Store in session state
-        st.session_state.data = df
-        st.info(f"Generated sample {sample_data_option} data.")
-        
-        # Process the data
-        try:
-            # Select all columns except target as features
-            selected_features = [col for col in df.columns if col != target_column]
-            
-            # Analyze data types
-            data_types = {}
-            for column in df.columns:
-                data_types[column] = infer_and_validate_data_type(df[column])
-            st.session_state.data_types = data_types
-            
-            # Process the data
-            X, y, categorical_encoders, target_type, target_mapping, scaler, original_target = prepare_data(
-                df, target_column, selected_features, data_types
-            )
-            
-            # Save processed data in session state
-            st.session_state.processed_data = {
-                'X': X,
-                'y': y,
-                'target_column': target_column,
-                'selected_features': selected_features,
-                'original_target': original_target
-            }
-            
-            # Save important metadata
-            st.session_state.target_type = target_type
-            st.session_state.target_mapping = target_mapping
-            st.session_state.scaler = scaler
-            st.session_state.categorical_encoders = categorical_encoders
-            
-            # Initialize report_data if it doesn't exist
-            if 'report_data' not in st.session_state:
-                st.session_state.report_data = {
-                    'statistical_tests': {},
-                    'threshold_analysis': {},
-                    'model_training': {},
-                    'model_evaluation': {},
-                    'predictions': [],
-                    'batch_predictions': []
-                }
-            
-            # Show success message
-            st.success(f"Sample data loaded and processed successfully! Target '{target_column}' detected as {target_type} type.")
-            
-            # Navigate to data exploration
-            st.session_state.current_section = "data_exploration"
-            st.rerun()  # Use st.rerun() instead of st.experimental_rerun()
-            
-        except Exception as e:
-            st.error(f"Error processing data: {str(e)}")
-            import traceback
-            st.code(traceback.format_exc())
-            
-    except Exception as e:
-        st.error(f"Error generating sample data: {str(e)}")
-        import traceback
-        st.code(traceback.format_exc())
+        if sample_data_option != "None" and st.button("Load Sample Data"):
+            try:
+                # Generate sample data directly without trying to load files
+                df = None
+                
+                if sample_data_option == "Student Performance":
+                    # Create student performance demo data
+                    df = pd.DataFrame({
+                        'student_id': range(1, 101),
+                        'hours_studied': np.random.randint(1, 10, 100),
+                        'attendance_pct': np.random.randint(60, 100, 100),
+                        'previous_gpa': np.random.uniform(2.0, 4.0, 100).round(2),
+                        'final_grade': np.random.randint(50, 100, 100)
+                    })
+                    target_column = "final_grade"
+                    
+                elif sample_data_option == "Employee Attrition":
+                    # Create employee attrition demo data
+                    df = pd.DataFrame({
+                        'employee_id': range(1, 101),
+                        'age': np.random.randint(22, 60, 100),
+                        'salary': np.random.randint(30000, 120000, 100),
+                        'years_at_company': np.random.randint(0, 20, 100),
+                        'satisfaction_score': np.random.randint(1, 10, 100),
+                        'left_company': np.random.choice(['Yes', 'No'], 100, p=[0.3, 0.7])
+                    })
+                    target_column = "left_company"
+                    
+                elif sample_data_option == "Housing Prices":
+                    # Create housing prices demo data
+                    df = pd.DataFrame({
+                        'house_id': range(1, 101),
+                        'square_feet': np.random.randint(800, 4000, 100),
+                        'bedrooms': np.random.randint(1, 6, 100),
+                        'bathrooms': np.random.choice([1, 1.5, 2, 2.5, 3, 3.5, 4], 100),
+                        'age_years': np.random.randint(0, 50, 100),
+                        'price': np.random.randint(100000, 1000000, 100)
+                    })
+                    target_column = "price"
+                    
+                else:
+                    st.error(f"Unknown sample data option: {sample_data_option}")
+                    return
+                
+                # Store in session state
+                st.session_state.data = df
+                st.info(f"Generated sample {sample_data_option} data.")
+                
+                # Process the data
+                try:
+                    # Select all columns except target as features
+                    selected_features = [col for col in df.columns if col != target_column]
+                    
+                    # Analyze data types
+                    data_types = {}
+                    for column in df.columns:
+                        data_types[column] = infer_and_validate_data_type(df[column])
+                    st.session_state.data_types = data_types
+                    
+                    # Process the data
+                    X, y, categorical_encoders, target_type, target_mapping, scaler, original_target = prepare_data(
+                        df, target_column, selected_features, data_types
+                    )
+                    
+                    # Save processed data in session state
+                    st.session_state.processed_data = {
+                        'X': X,
+                        'y': y,
+                        'target_column': target_column,
+                        'selected_features': selected_features,
+                        'original_target': original_target
+                    }
+                    
+                    # Save important metadata
+                    st.session_state.target_type = target_type
+                    st.session_state.target_mapping = target_mapping
+                    st.session_state.scaler = scaler
+                    st.session_state.categorical_encoders = categorical_encoders
+                    
+                    # Initialize report_data if it doesn't exist
+                    if 'report_data' not in st.session_state:
+                        st.session_state.report_data = {
+                            'statistical_tests': {},
+                            'threshold_analysis': {},
+                            'model_training': {},
+                            'model_evaluation': {},
+                            'predictions': [],
+                            'batch_predictions': []
+                        }
+                    
+                    # Show success message
+                    st.success(f"Sample data loaded and processed successfully! Target '{target_column}' detected as {target_type} type.")
+                    
+                    # Navigate to data exploration
+                    st.session_state.current_section = "data_exploration"
+                    st.rerun()  # Use st.rerun() instead of st.experimental_rerun()
+                    
+                except Exception as e:
+                    st.error(f"Error processing data: {str(e)}")
+                    import traceback
+                    st.code(traceback.format_exc())
+                    
+            except Exception as e:
+                st.error(f"Error generating sample data: {str(e)}")
+                import traceback
+                st.code(traceback.format_exc())
         
 if __name__ == "__main__":
     show_data_upload()
