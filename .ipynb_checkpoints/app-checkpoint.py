@@ -208,7 +208,7 @@ def create_sidebar():
             # Clear all session state
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
-            st.experimental_rerun()
+            st.rerun()
         
         # Display dataset info if data is loaded
         if st.session_state.data is not None:
@@ -320,7 +320,7 @@ def data_upload_section():
                         
                         # Navigate to data exploration
                         st.session_state.current_section = "data_exploration"
-                        st.experimental_rerun()
+                        st.rerun()
                     except Exception as e:
                         st.error(f"Error processing data: {str(e)}")
         
