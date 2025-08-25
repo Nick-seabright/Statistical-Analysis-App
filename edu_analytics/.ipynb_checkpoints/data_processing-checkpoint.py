@@ -175,15 +175,16 @@ def detect_target_type(series: pd.Series) -> Tuple[str, pd.Series, Optional[Dict
     
     return 'categorical', processed_series, mapping
 
+# In edu_analytics/data_processing.py, modify the prepare_data function:
+
 def prepare_data(
-    df: pd.DataFrame, 
-    target_column: str, 
-    selected_features: List[str] = None, 
+    df: pd.DataFrame,
+    target_column: str,
+    selected_features: List[str] = None,
     data_types: Dict[str, str] = None
 ) -> Tuple:
     """
     Prepare data for analysis
-    
     Parameters:
     -----------
     df : DataFrame
@@ -194,7 +195,6 @@ def prepare_data(
         List of features to include, if None, all columns except target are used
     data_types : Dict[str, str], optional
         Dictionary of data types for each column, if None, types are inferred
-        
     Returns:
     --------
     Tuple containing:
@@ -214,7 +214,6 @@ def prepare_data(
         missing_values = df_processed.isnull().sum()
         if missing_values.any():
             logger.warning(f"Missing values detected:\n{missing_values[missing_values > 0]}")
-            
             # Fill numeric columns with median, categorical with mode
             for column in df_processed.columns:
                 if df_processed[column].dtype in ['int64', 'float64']:
@@ -228,7 +227,7 @@ def prepare_data(
         
         # If no data types provided, infer them
         if data_types is None:
-            data_types = {column: infer_and_validate_data_type(df_processed[column]) 
+            data_types = {column: infer_and_validate_data_type(df_processed[column])
                          for column in df_processed.columns}
         
         # Process target variable
@@ -243,33 +242,62 @@ def prepare_data(
         # Process features
         categorical_encoders = {}
         time_columns = []
-        
         for feature in selected_features:
             feature_type = data_types.get(feature)
-            
             # Process time features
             if feature_type == 'time':
                 from .time_analysis import convert_time_to_minutes
                 df_processed[feature] = df_processed[feature].apply(convert_time_to_minutes)
                 time_columns.append(feature)
-            
             # Process categorical features
             elif feature_type == 'categorical':
                 le = LabelEncoder()
                 df_processed[feature] = le.fit_transform(df_processed[feature].astype(str))
                 categorical_encoders[feature] = le
-            
+            # Process boolean features - convert to 0/1
+            elif feature_type == 'boolean':
+                # Handle various forms of True/False values
+                bool_map = {
+                    'true': 1, 'yes': 1, 'y': 1, '1': 1, 1: 1, True: 1,
+                    'false': 0, 'no': 0, 'n': 0, '0': 0, 0: 0, False: 0
+                }
+                # First convert to lowercase strings to standardize
+                df_processed[feature] = df_processed[feature].astype(str).str.lower()
+                # Then map to 0/1
+                df_processed[feature] = df_processed[feature].map(bool_map)
+                # Fill any unmapped values with 0
+                df_processed[feature] = df_processed[feature].fillna(0).astype(int)
             # Process datetime features
             elif feature_type == 'datetime':
                 df_processed[feature] = pd.to_datetime(df_processed[feature], errors='coerce')
-                
                 # Convert to days since minimum date
                 min_date = df_processed[feature].min()
                 df_processed[feature] = (df_processed[feature] - min_date).dt.total_seconds() / (24 * 3600)
         
         # Prepare X and y
-        X = df_processed[selected_features]
-        y = df_processed[target_column]
+        X = df_processed[selected_features].copy()
+        y = df_processed[target_column].copy()
+        
+        # Check if X contains any non-numeric data before scaling
+        non_numeric_cols = []
+        for col in X.columns:
+            if not pd.api.types.is_numeric_dtype(X[col]):
+                non_numeric_cols.append(col)
+        
+        if non_numeric_cols:
+            logger.warning(f"Found non-numeric columns that weren't properly encoded: {non_numeric_cols}")
+            # Attempt to convert these columns
+            for col in non_numeric_cols:
+                try:
+                    # Try to convert to numeric
+                    X[col] = pd.to_numeric(X[col], errors='coerce')
+                    # Fill NaN values with column median
+                    X[col] = X[col].fillna(X[col].median())
+                except Exception as e:
+                    logger.error(f"Could not convert column {col} to numeric: {str(e)}")
+                    # As a last resort, drop the column
+                    logger.warning(f"Dropping column {col} from the feature set")
+                    X = X.drop(columns=[col])
         
         # Scale features
         scaler = StandardScaler()
@@ -287,7 +315,6 @@ def prepare_data(
         logger.info(f"Time features converted: {len(time_columns)}")
         
         return X_scaled, y, categorical_encoders, target_type, target_mapping, scaler, original_target
-    
     except Exception as e:
         logger.error(f"Error in data preparation: {str(e)}")
         raise
