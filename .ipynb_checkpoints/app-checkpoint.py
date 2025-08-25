@@ -117,7 +117,14 @@ def init_session_state():
     if 'feature_importance' not in st.session_state:
         st.session_state.feature_importance = None
     if 'report_data' not in st.session_state:
-        st.session_state.report_data = {}
+        st.session_state.report_data = {
+            'statistical_tests': {},
+            'threshold_analysis': {},
+            'model_training': {},
+            'model_evaluation': {},
+            'predictions': [],
+            'batch_predictions': []
+        }
     if 'current_section' not in st.session_state:
         st.session_state.current_section = "data_upload"
     # Initialize save directory with default value
@@ -125,12 +132,11 @@ def init_session_state():
         # Default to user's Documents folder
         default_dir = os.path.join(os.path.expanduser("~"), "Documents", "StatisticalAnalysis")
         st.session_state.save_directory = default_dir
-        
         # Try to create the directory
         try:
             os.makedirs(default_dir, exist_ok=True)
         except Exception as e:
-            logger.warning(f"Could not create default save directory: {str(e)}")
+            st.warning(f"Could not create default save directory: {str(e)}")
 
 # Main layout function
 def main():
@@ -148,27 +154,21 @@ def main():
     if st.session_state.current_section == "data_upload":
         from streamlit_app.pages.data_upload import show_data_upload
         show_data_upload()
-    
     elif st.session_state.current_section == "data_exploration":
         from streamlit_app.pages.data_exploration import show_data_exploration
         show_data_exploration()
-    
     elif st.session_state.current_section == "statistical_analysis":
         from streamlit_app.pages.statistical_analysis import show_statistical_analysis
         show_statistical_analysis()
-    
     elif st.session_state.current_section == "threshold_analysis":
         from streamlit_app.pages.threshold_analysis import show_threshold_analysis
         show_threshold_analysis()
-    
     elif st.session_state.current_section == "model_training":
         from streamlit_app.pages.model_training import show_model_training
         show_model_training()
-    
     elif st.session_state.current_section == "predictions":
         from streamlit_app.pages.predictions import show_predictions
         show_predictions()
-    
     elif st.session_state.current_section == "report_generation":
         from streamlit_app.pages.report_generation import show_report_generation
         show_report_generation()
