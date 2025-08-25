@@ -1,4 +1,3 @@
-# streamlit_app/pages/data_upload.py
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -6,19 +5,19 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 import sys
-from edu_analytics.data_processing import infer_and_validate_data_type, prepare_data
+import traceback
 
 # Add the parent directory to path if running this file directly
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 if parent_dir not in sys.path:
     sys.path.append(parent_dir)
 
-from edu_analytics.data_processing import infer_and_validate_data_type
-
 def show_data_upload():
+    # Import all required functions at the beginning of the function
+    from edu_analytics.data_processing import infer_and_validate_data_type, prepare_data
+    
     st.markdown("<div class='subheader'>Upload Your Data</div>", unsafe_allow_html=True)
     st.markdown("<div class='info-text'>Upload a CSV file containing your data for analysis.</div>", unsafe_allow_html=True)
-    
     uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
     
     if uploaded_file is not None:
@@ -38,7 +37,6 @@ def show_data_upload():
                 st.write(f"Rows: {df.shape[0]}")
                 st.write(f"Columns: {df.shape[1]}")
                 st.write(f"Missing values: {df.isna().sum().sum()}")
-            
             with col2:
                 # Get numeric and categorical columns
                 numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns.tolist()
@@ -67,9 +65,7 @@ def show_data_upload():
             # Feature selection
             st.markdown("<div class='subheader'>Select Features</div>", unsafe_allow_html=True)
             st.markdown("<div class='info-text'>Select the features you want to use for analysis.</div>", unsafe_allow_html=True)
-            
             all_features = st.checkbox("Select All Features", value=True)
-            
             if all_features:
                 selected_features = [col for col in df.columns if col != target_column]
             else:
@@ -83,9 +79,6 @@ def show_data_upload():
             if st.button("Process Data", key="process_data"):
                 with st.spinner("Processing data..."):
                     try:
-                        # Import function here to avoid circular imports
-                        from edu_analytics.data_processing import prepare_data
-                        
                         # Process the data
                         X, y, categorical_encoders, target_type, target_mapping, scaler, original_target = prepare_data(
                             df, target_column, selected_features, data_types
@@ -106,22 +99,35 @@ def show_data_upload():
                         st.session_state.scaler = scaler
                         st.session_state.categorical_encoders = categorical_encoders
                         
+                        # Initialize report_data if it doesn't exist
+                        if 'report_data' not in st.session_state:
+                            st.session_state.report_data = {
+                                'statistical_tests': {},
+                                'threshold_analysis': {},
+                                'model_training': {},
+                                'model_evaluation': {},
+                                'predictions': [],
+                                'batch_predictions': []
+                            }
+                        
                         # Show success message
                         st.success(f"Data processed successfully! Target '{target_column}' detected as {target_type} type.")
                         
                         # Navigate to data exploration
                         st.session_state.current_section = "data_exploration"
-                        st.experimental_rerun()
+                        st.rerun()  # Changed from st.experimental_rerun()
+                        
                     except Exception as e:
                         st.error(f"Error processing data: {str(e)}")
-        
+                        st.code(traceback.format_exc())
+                        
         except Exception as e:
             st.error(f"Error loading data: {str(e)}")
-    
+            st.code(traceback.format_exc())
+            
     else:
         # Show sample data option when no file is uploaded
         st.markdown("### Or Use Sample Data")
-        
         sample_data_option = st.selectbox(
             "Select a sample dataset",
             ["None", "Student Performance", "Employee Attrition", "Housing Prices"]
@@ -222,17 +228,15 @@ def show_data_upload():
                     
                     # Navigate to data exploration
                     st.session_state.current_section = "data_exploration"
-                    st.rerun()  # Use st.rerun() instead of st.experimental_rerun()
+                    st.rerun()  # Changed from st.experimental_rerun()
                     
                 except Exception as e:
                     st.error(f"Error processing data: {str(e)}")
-                    import traceback
                     st.code(traceback.format_exc())
                     
             except Exception as e:
                 st.error(f"Error generating sample data: {str(e)}")
-                import traceback
                 st.code(traceback.format_exc())
-        
+
 if __name__ == "__main__":
     show_data_upload()
