@@ -188,7 +188,7 @@ def show_data_upload():
                 # Store in session state
                 st.session_state.data = df
                 # Refresh page to show the loaded data
-                st.experimental_rerun()
+                st.rerun()
             except Exception as e:
                 st.error(f"Error loading sample data: {str(e)}")
 
