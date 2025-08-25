@@ -6,6 +6,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 import sys
+from edu_analytics.utils import save_file, get_timestamped_filename
+import pickle
 
 # Add the parent directory to path if running this file directly
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
@@ -465,6 +467,90 @@ def show_model_training():
                 st.error(f"Error evaluating model: {str(e)}")
                 import traceback
                 st.code(traceback.format_exc())
+
+if st.button("Save Model", key="save_model"):
+    try:
+        with st.spinner("Saving model..."):
+            # Serialize the model
+            model_bytes = pickle.dumps(model)
+            
+            # Generate filename
+            model_filename = get_timestamped_filename(f"{selected_model}_model", "pkl")
+            
+            # Save model to user-specified directory
+            success, message, path = save_file(model_bytes, model_filename, "models")
+            
+            if success:
+                st.success(f"Model saved: {path}")
+            else:
+                st.warning(message)
+                
+                # Provide download as backup
+                st.download_button(
+                    label="Download Model",
+                    data=model_bytes,
+                    file_name=model_filename,
+                    mime="application/octet-stream"
+                )
+    except Exception as e:
+        st.error(f"Error saving model: {str(e)}")
+
+# streamlit_app/pages/model_training.py (add at the end)
+
+# Import the file browser
+from streamlit_app.components.file_browser import file_browser
+import os
+import pickle
+
+# Add a section to view saved models
+st.markdown("---")
+st.subheader("Load Saved Models")
+
+# Get models directory
+if 'save_directory' in st.session_state:
+    models_dir = os.path.join(st.session_state.save_directory, "models")
+    
+    # Check if directory exists, create if it doesn't
+    if not os.path.exists(models_dir):
+        try:
+            os.makedirs(models_dir, exist_ok=True)
+            st.info(f"Created models directory: {models_dir}")
+        except Exception as e:
+            st.warning(f"Could not create models directory: {str(e)}")
+    
+    # Use the file browser component
+    selected_model_file = file_browser(models_dir, "pkl")
+    
+    if selected_model_file:
+        st.write(f"Selected model: {os.path.basename(selected_model_file)}")
+        
+        # Offer option to load the model
+        if st.button("Load Model"):
+            try:
+                with open(selected_model_file, "rb") as f:
+                    loaded_model = pickle.load(f)
+                
+                # Store in session state
+                model_name = os.path.basename(selected_model_file).split('.')[0]
+                if 'models' not in st.session_state:
+                    st.session_state.models = {}
+                
+                st.session_state.models[model_name] = loaded_model
+                st.success(f"Model '{model_name}' loaded successfully!")
+                
+                # Provide model info if available
+                st.write("Model type:", type(loaded_model).__name__)
+                
+                # If it's a sklearn model, show more details
+                if hasattr(loaded_model, 'get_params'):
+                    st.write("Model parameters:", loaded_model.get_params())
+                
+            except Exception as e:
+                st.error(f"Could not load model: {str(e)}")
+                import traceback
+                st.code(traceback.format_exc())
+else:
+    st.info("Please set a save directory in the sidebar to view saved models.")
 
 if __name__ == "__main__":
     show_model_training()

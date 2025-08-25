@@ -9,8 +9,100 @@ import io
 import base64
 from datetime import datetime
 import logging
+import os
+import pathlib
+import streamlit as st
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
+
+def get_save_path(filename, subdir=None):
+    """
+    Get the full path to save a file in the user-specified directory
+    
+    Parameters:
+    -----------
+    filename : str
+        Name of the file to save
+    subdir : str, optional
+        Subdirectory within the main save directory (e.g., 'reports', 'models')
+        
+    Returns:
+    --------
+    str : Full path to save the file
+    """
+    # Get the base directory from session state
+    if 'save_directory' not in st.session_state:
+        # Default to user's Documents folder if not set
+        base_dir = os.path.join(os.path.expanduser("~"), "Documents", "StatisticalAnalysis")
+    else:
+        base_dir = st.session_state.save_directory
+    
+    # Create the directory if it doesn't exist
+    try:
+        if subdir:
+            save_dir = os.path.join(base_dir, subdir)
+            os.makedirs(save_dir, exist_ok=True)
+        else:
+            save_dir = base_dir
+            os.makedirs(save_dir, exist_ok=True)
+    except Exception as e:
+        st.warning(f"Could not create directory {save_dir}: {str(e)}")
+        # Fall back to base directory
+        save_dir = base_dir
+    
+    # Return the full path
+    return os.path.join(save_dir, filename)
+
+def save_file(content, filename, subdir=None):
+    """
+    Save a file to the user-specified directory
+    
+    Parameters:
+    -----------
+    content : bytes or str
+        Content to save
+    filename : str
+        Name of the file
+    subdir : str, optional
+        Subdirectory within the main save directory
+        
+    Returns:
+    --------
+    tuple : (success, message, path)
+    """
+    try:
+        # Get full path
+        path = get_save_path(filename, subdir)
+        
+        # Determine mode based on content type
+        mode = 'wb' if isinstance(content, bytes) else 'w'
+        
+        # Save the file
+        with open(path, mode) as f:
+            f.write(content)
+        
+        return True, f"File saved successfully to {path}", path
+    except Exception as e:
+        return False, f"Error saving file: {str(e)}", None
+
+def get_timestamped_filename(base_name, extension):
+    """
+    Create a filename with a timestamp
+    
+    Parameters:
+    -----------
+    base_name : str
+        Base name for the file
+    extension : str
+        File extension (without the dot)
+        
+    Returns:
+    --------
+    str : Filename with timestamp
+    """
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return f"{base_name}_{timestamp}.{extension}"
 
 def interpret_prediction(
     prediction: float, 

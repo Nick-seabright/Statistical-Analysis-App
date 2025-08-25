@@ -11,3 +11,4 @@ scipy>=1.7.0
 statsmodels>=0.13.0
 weasyprint>=54.0
 openpyxl>=3.0.0
+EOL

@@ -9,6 +9,7 @@ import sys
 import base64
 from datetime import datetime
 import io
+from edu_analytics.utils import save_file, get_timestamped_filename
 
 # Add the parent directory to path if running this file directly
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
@@ -84,19 +85,37 @@ def show_report_generation():
                 # Convert HTML to PDF
                 pdf_report = convert_html_to_pdf(report_html)
                 
-                # Provide download link
+                # Generate filenames
+                html_filename = get_timestamped_filename("statistical_analysis_report", "html")
+                pdf_filename = get_timestamped_filename("statistical_analysis_report", "pdf")
+                
+                # Save files to user-specified directory
+                html_success, html_message, html_path = save_file(report_html, html_filename, "reports")
+                pdf_success, pdf_message, pdf_path = save_file(pdf_report, pdf_filename, "reports")
+                
+                # Show success/error messages
+                if html_success:
+                    st.success(f"HTML report saved: {html_path}")
+                else:
+                    st.warning(html_message)
+                    
+                if pdf_success:
+                    st.success(f"PDF report saved: {pdf_path}")
+                else:
+                    st.warning(pdf_message)
+                
+                # Also provide download buttons as backup
                 st.download_button(
                     label="Download Report (PDF)",
                     data=pdf_report,
-                    file_name=f"statistical_analysis_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                    file_name=pdf_filename,
                     mime='application/pdf',
                 )
                 
-                # Also allow downloading HTML version
                 st.download_button(
                     label="Download Report (HTML)",
                     data=report_html,
-                    file_name=f"statistical_analysis_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
+                    file_name=html_filename,
                     mime='text/html',
                 )
                 
@@ -1132,6 +1151,61 @@ def generate_predictions_section(report_data):
     """
     
     return html
+
+# Import the file browser
+from streamlit_app.components.file_browser import file_browser
+import os
+
+# Add a section to view saved reports
+st.markdown("---")
+st.subheader("View Saved Reports")
+
+# Get reports directory
+if 'save_directory' in st.session_state:
+    reports_dir = os.path.join(st.session_state.save_directory, "reports")
+    
+    # Check if directory exists, create if it doesn't
+    if not os.path.exists(reports_dir):
+        try:
+            os.makedirs(reports_dir, exist_ok=True)
+            st.info(f"Created reports directory: {reports_dir}")
+        except Exception as e:
+            st.warning(f"Could not create reports directory: {str(e)}")
+    
+    # Use the file browser component
+    selected_report = file_browser(reports_dir, "pdf")
+    
+    if selected_report:
+        st.write(f"Selected report: {os.path.basename(selected_report)}")
+        
+        # Offer options to open the file
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("Open Report"):
+                try:
+                    import webbrowser
+                    webbrowser.open(selected_report)
+                    st.success("Report opened in default application")
+                except Exception as e:
+                    st.error(f"Could not open report: {str(e)}")
+        
+        with col2:
+            # Read the file and offer download
+            try:
+                with open(selected_report, "rb") as f:
+                    report_bytes = f.read()
+                    
+                st.download_button(
+                    "Download Report",
+                    report_bytes,
+                    file_name=os.path.basename(selected_report),
+                    mime="application/pdf" if selected_report.endswith(".pdf") else "text/html"
+                )
+            except Exception as e:
+                st.error(f"Could not read report file: {str(e)}")
+else:
+    st.info("Please set a save directory in the sidebar to view saved reports.")
 
 if __name__ == "__main__":
     show_report_generation()

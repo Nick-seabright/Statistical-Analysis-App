@@ -3,21 +3,22 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
 from pathlib import Path
 import sys
 import os
 import base64
 from datetime import datetime
-import pickle
+import io
 
 # Add the parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Import our package
-from edu_analytics.data_processing import prepare_data, detect_target_type
+# Import from our package
+from edu_analytics.data_processing import prepare_data, detect_target_type, infer_and_validate_data_type
 from edu_analytics.feature_engineering import analyze_correlations
 from edu_analytics.model_training import train_models
-from edu_analytics.model_evaluation import evaluate_models
+from edu_analytics.model_evaluation import evaluate_model
 from edu_analytics.statistical_tests import (
     perform_t_test, visualize_t_test,
     perform_chi_square, visualize_chi_square,
@@ -25,22 +26,28 @@ from edu_analytics.statistical_tests import (
     multi_group_analysis, categorical_association_analysis,
     numerical_correlation_analysis, visualize_correlation_analysis
 )
-# streamlit_app/app.py (continued)
-from edu_analytics.threshold_analysis import analyze_decision_boundaries
+from edu_analytics.threshold_analysis import analyze_decision_boundaries, analyze_custom_threshold_combination
 from edu_analytics.time_analysis import analyze_time_target
 from edu_analytics.utils import (
-    convert_time_to_minutes,
     interpret_prediction,
-    create_model_parameter_widgets
+    set_plotting_style,
+    create_report_header,
+    # Add new utility functions
+    save_file,
+    get_save_path,
+    get_timestamped_filename
 )
 
 # Set page configuration
 st.set_page_config(
-    page_title="Statistical Analytics",
+    page_title="Statistical Analysis App",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Set plotting style
+set_plotting_style()
 
 # Custom CSS
 def load_css():
@@ -111,6 +118,19 @@ def init_session_state():
         st.session_state.feature_importance = None
     if 'report_data' not in st.session_state:
         st.session_state.report_data = {}
+    if 'current_section' not in st.session_state:
+        st.session_state.current_section = "data_upload"
+    # Initialize save directory with default value
+    if 'save_directory' not in st.session_state:
+        # Default to user's Documents folder
+        default_dir = os.path.join(os.path.expanduser("~"), "Documents", "StatisticalAnalysis")
+        st.session_state.save_directory = default_dir
+        
+        # Try to create the directory
+        try:
+            os.makedirs(default_dir, exist_ok=True)
+        except Exception as e:
+            logger.warning(f"Could not create default save directory: {str(e)}")
 
 # Main layout function
 def main():
@@ -122,25 +142,40 @@ def main():
     create_sidebar()
     
     # Main app title
-    st.markdown("<div class='main-header'>Statistical Analytics Dashboard</div>", unsafe_allow_html=True)
+    st.markdown("<div class='main-header'>Statistical Analysis App</div>", unsafe_allow_html=True)
     
-    # If no data is loaded, show the data upload section
-    if st.session_state.data is None:
-        data_upload_section()
-    else:
-        # Show different sections based on sidebar selection
-        if st.session_state.current_section == "data_exploration":
-            data_exploration_section()
-        elif st.session_state.current_section == "statistical_analysis":
-            statistical_analysis_section()
-        elif st.session_state.current_section == "threshold_analysis":
-            threshold_analysis_section()
-        elif st.session_state.current_section == "model_training":
-            model_training_section()
-        elif st.session_state.current_section == "predictions":
-            predictions_section()
-        elif st.session_state.current_section == "report_generation":
-            report_generation_section()
+    # Show different sections based on sidebar selection
+    if st.session_state.current_section == "data_upload":
+        from pages.data_upload import show_data_upload
+        show_data_upload()
+    
+    elif st.session_state.current_section == "data_exploration":
+        from pages.data_exploration import show_data_exploration
+        show_data_exploration()
+    
+    elif st.session_state.current_section == "statistical_analysis":
+        from pages.statistical_analysis import show_statistical_analysis
+        show_statistical_analysis()
+    
+    elif st.session_state.current_section == "threshold_analysis":
+        from pages.threshold_analysis import show_threshold_analysis
+        show_threshold_analysis()
+    
+    elif st.session_state.current_section == "model_training":
+        from pages.model_training import show_model_training
+        show_model_training()
+    
+    elif st.session_state.current_section == "predictions":
+        from pages.predictions import show_predictions
+        show_predictions()
+    
+    elif st.session_state.current_section == "report_generation":
+        from pages.report_generation import show_report_generation
+        show_report_generation()
+    
+    elif st.session_state.current_section == "file_management":
+        from pages.file_management import show_file_management
+        show_file_management()
 
 # Sidebar creation
 def create_sidebar():
