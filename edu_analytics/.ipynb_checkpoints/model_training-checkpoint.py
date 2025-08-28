@@ -91,7 +91,6 @@ def train_models(
 ) -> Tuple[Dict, pd.DataFrame, Any]:
     """
     Train multiple machine learning models
-    
     Parameters:
     -----------
     X : DataFrame
@@ -106,7 +105,6 @@ def train_models(
         Size of test set
     random_state : int
         Random seed
-        
     Returns:
     --------
     Tuple containing:
@@ -118,20 +116,15 @@ def train_models(
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=test_size, random_state=random_state
     )
-    
     # Dictionary to store trained models
     trained_models = {}
-    
     # Dictionary to store evaluation results
     evaluation_results = {}
-    
     # Dictionary to store feature importance
     feature_importance = {}
-    
     # Train and evaluate each model
     for model_name, model_type in models:
         logger.info(f"Training {model_name} ({model_type})...")
-        
         try:
             # Initialize model based on type and target type
             if target_type == 'categorical':
@@ -175,7 +168,6 @@ def train_models(
                     patience=10,
                     restore_best_weights=True
                 )
-                
                 # Fit neural network
                 history = model.fit(
                     X_train, y_train,
@@ -196,8 +188,16 @@ def train_models(
             if target_type == 'categorical':
                 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
                 
-                # Make predictions
-                y_pred = model.predict(X_test)
+                # Make predictions - handle neural networks differently
+                if model_type == 'nn':
+                    # For neural networks, convert probabilities to class predictions
+                    if len(np.unique(y)) == 2:  # Binary classification
+                        y_pred = (model.predict(X_test) > 0.5).astype('int32').flatten()
+                    else:  # Multi-class classification
+                        y_pred = np.argmax(model.predict(X_test), axis=1)
+                else:
+                    # Standard models
+                    y_pred = model.predict(X_test)
                 
                 # Calculate metrics
                 accuracy = accuracy_score(y_test, y_pred)
@@ -213,7 +213,7 @@ def train_models(
                     'F1 Score': f1
                 }
                 
-                # Cross-validation score
+                # Cross-validation score (skip for neural networks)
                 if model_type != 'nn':
                     cv_scores = cross_val_score(model, X, y, cv=5)
                     evaluation_results[model_name]['CV Accuracy'] = cv_scores.mean()
@@ -222,8 +222,11 @@ def train_models(
             else:  # 'numeric' or 'time'
                 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
                 
-                # Make predictions
-                y_pred = model.predict(X_test)
+                # Make predictions - handle neural networks consistently
+                if model_type == 'nn':
+                    y_pred = model.predict(X_test).flatten()  # Flatten for consistent dimensions
+                else:
+                    y_pred = model.predict(X_test)
                 
                 # Calculate metrics
                 mse = mean_squared_error(y_test, y_pred)
@@ -239,7 +242,7 @@ def train_models(
                     'R² Score': r2
                 }
                 
-                # Cross-validation score
+                # Cross-validation score (skip for neural networks)
                 if model_type != 'nn':
                     cv_scores = cross_val_score(model, X, y, cv=5, scoring='r2')
                     evaluation_results[model_name]['CV R²'] = cv_scores.mean()
@@ -249,13 +252,11 @@ def train_models(
             if hasattr(model, 'feature_importances_'):
                 # For Random Forest and XGBoost
                 importances = model.feature_importances_
-                
                 # Create DataFrame
                 importance_df = pd.DataFrame({
-                    'Feature': X.columns,
-                    'Importance': importances
-                }).sort_values('Importance', ascending=False)
-                
+                    'feature': X.columns,
+                    'importance': importances
+                }).sort_values('importance', ascending=False)
                 feature_importance[model_name] = importance_df
             
             logger.info(f"Finished training {model_name}")
