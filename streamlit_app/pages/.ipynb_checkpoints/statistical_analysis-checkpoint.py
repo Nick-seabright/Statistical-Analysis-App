@@ -91,68 +91,68 @@ def show_statistical_analysis():
                 if st.button("Perform T-Test", key="run_ttest"):
                     try:
                         with st.spinner("Performing T-test..."):
-                        # Perform t-test
-                        ttest_results = perform_t_test(
-                            data=data,
-                            feature=numeric_feature,
-                            target=grouping_variable,
-                            alpha=0.05,
-                            equal_var=False  # Use Welch's t-test by default
-                        )
-                        
-                        # Display results
-                        st.markdown("### T-Test Results")
-                        
-                        # Key metrics
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            st.metric(
-                                label=f"Mean for {ttest_results['groups'][0]}",
-                                value=f"{ttest_results['group1_mean']:.3f}"
+                            # Perform t-test
+                            ttest_results = perform_t_test(
+                                data=data,
+                                feature=numeric_feature,
+                                target=grouping_variable,
+                                alpha=0.05,
+                                equal_var=False  # Use Welch's t-test by default
                             )
-                        with col2:
-                            st.metric(
-                                label=f"Mean for {ttest_results['groups'][1]}",
-                                value=f"{ttest_results['group2_mean']:.3f}"
-                            )
-                        with col3:
-                            st.metric(
-                                label="Mean Difference",
-                                value=f"{ttest_results['mean_difference']:.3f}",
-                                delta=f"p={ttest_results['p_value']:.4f}"
-                            )
-                        
-                        # Test details
-                        st.markdown("**Test Details:**")
-                        st.write(f"t-statistic: {ttest_results['t_statistic']:.4f}")
-                        st.write(f"p-value: {ttest_results['p_value']:.4f}")
-                        st.write(f"Degrees of freedom: {ttest_results['group1_n'] + ttest_results['group2_n'] - 2}")
-                        
-                        # Interpretation
-                        if ttest_results['significant']:
-                            st.success(f"The difference is statistically significant (p < {ttest_results['alpha']}).")
-                        else:
-                            st.info(f"The difference is not statistically significant (p > {ttest_results['alpha']}).")
-                        
-                        # Visualize the results
-                        fig = visualize_t_test(ttest_results)
-                        st.pyplot(fig)
-                        plt.close(fig)  # Close the figure to prevent interference
-                        
-                        # Store the results for the report
-                        if 'statistical_tests' not in st.session_state.report_data:
-                            st.session_state.report_data['statistical_tests'] = {}
-                        test_key = f"ttest_{numeric_feature}_by_{grouping_variable}"
-                        st.session_state.report_data['statistical_tests'][test_key] = {
-                            'type': 't-test',
-                            'results': ttest_results,
-                            'description': f"T-test comparing {numeric_feature} means between {grouping_variable} groups"
-                        }
-                except Exception as e:
-                    st.error(f"Error performing t-test: {str(e)}")
-                    st.code(traceback.format_exc())
-        else:
-            st.warning("No binary categorical variables found for grouping. T-test requires a binary grouping variable.")
+                            
+                            # Display results
+                            st.markdown("### T-Test Results")
+                            
+                            # Key metrics
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                st.metric(
+                                    label=f"Mean for {ttest_results['groups'][0]}",
+                                    value=f"{ttest_results['group1_mean']:.3f}"
+                                )
+                            with col2:
+                                st.metric(
+                                    label=f"Mean for {ttest_results['groups'][1]}",
+                                    value=f"{ttest_results['group2_mean']:.3f}"
+                                )
+                            with col3:
+                                st.metric(
+                                    label="Mean Difference",
+                                    value=f"{ttest_results['mean_difference']:.3f}",
+                                    delta=f"p={ttest_results['p_value']:.4f}"
+                                )
+                            
+                            # Test details
+                            st.markdown("**Test Details:**")
+                            st.write(f"t-statistic: {ttest_results['t_statistic']:.4f}")
+                            st.write(f"p-value: {ttest_results['p_value']:.4f}")
+                            st.write(f"Degrees of freedom: {ttest_results['group1_n'] + ttest_results['group2_n'] - 2}")
+                            
+                            # Interpretation
+                            if ttest_results['significant']:
+                                st.success(f"The difference is statistically significant (p < {ttest_results['alpha']}).")
+                            else:
+                                st.info(f"The difference is not statistically significant (p > {ttest_results['alpha']}).")
+                            
+                            # Visualize the results
+                            fig = visualize_t_test(ttest_results)
+                            st.pyplot(fig)
+                            plt.close(fig)  # Close the figure to prevent interference
+                            
+                            # Store the results for the report
+                            if 'statistical_tests' not in st.session_state.report_data:
+                                st.session_state.report_data['statistical_tests'] = {}
+                            test_key = f"ttest_{numeric_feature}_by_{grouping_variable}"
+                            st.session_state.report_data['statistical_tests'][test_key] = {
+                                'type': 't-test',
+                                'results': ttest_results,
+                                'description': f"T-test comparing {numeric_feature} means between {grouping_variable} groups"
+                            }
+                    except Exception as e:
+                        st.error(f"Error performing t-test: {str(e)}")
+                        st.code(traceback.format_exc())
+            else:
+                st.warning("No binary categorical variables found for grouping. T-test requires a binary grouping variable.")
     
     with tab2:
         st.markdown("<div class='subheader'>Chi-Square Test Analysis</div>", unsafe_allow_html=True)
@@ -197,66 +197,66 @@ def show_statistical_analysis():
                 if st.button("Perform Chi-Square Test", key="run_chisq"):
                     try:
                         with st.spinner("Performing Chi-Square test..."):
-                        # Perform chi-square test
-                        chisq_results = perform_chi_square(
-                            data=data,
-                            feature=categorical_feature,
-                            target=categorical_target,
-                            alpha=0.05
-                        )
-                        
-                        # Display results
-                        st.markdown("### Chi-Square Test Results")
-                        
-                        # Key metrics
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            st.metric(
-                                label="Chi-Square Statistic",
-                                value=f"{chisq_results['chi2']:.3f}"
+                            # Perform chi-square test
+                            chisq_results = perform_chi_square(
+                                data=data,
+                                feature=categorical_feature,
+                                target=categorical_target,
+                                alpha=0.05
                             )
-                        with col2:
-                            st.metric(
-                                label="p-value",
-                                value=f"{chisq_results['p_value']:.4f}"
-                            )
-                        with col3:
-                            st.metric(
-                                label="Cramer's V",
-                                value=f"{chisq_results['cramers_v']:.3f}",
-                                delta=chisq_results['effect_size']
-                            )
-                        
-                        # Interpretation
-                        if chisq_results['significant']:
-                            st.success(f"There is a statistically significant association between {categorical_feature} and {categorical_target} (p < {chisq_results['alpha']}).")
-                            st.write(f"The effect size is {chisq_results['effect_size'].lower()} (Cramer's V = {chisq_results['cramers_v']:.3f}).")
-                        else:
-                            st.info(f"There is no statistically significant association between {categorical_feature} and {categorical_target} (p > {chisq_results['alpha']}).")
-                        
-                        # Visualize the results
-                        fig = visualize_chi_square(chisq_results)
-                        st.pyplot(fig)
-                        plt.close(fig)  # Close the figure to prevent interference
-                        
-                        # Display contingency table
-                        st.markdown("### Contingency Table")
-                        st.dataframe(chisq_results['contingency_table'])
-                        
-                        # Store the results for the report
-                        if 'statistical_tests' not in st.session_state.report_data:
-                            st.session_state.report_data['statistical_tests'] = {}
-                        test_key = f"chisq_{categorical_feature}_by_{categorical_target}"
-                        st.session_state.report_data['statistical_tests'][test_key] = {
-                            'type': 'chi-square',
-                            'results': chisq_results,
-                            'description': f"Chi-square test of association between {categorical_feature} and {categorical_target}"
-                        }
-                except Exception as e:
-                    st.error(f"Error performing chi-square test: {str(e)}")
-                    st.code(traceback.format_exc())
-        else:
-            st.warning("Not enough categorical variables found. Chi-square test requires two categorical variables.")
+                            
+                            # Display results
+                            st.markdown("### Chi-Square Test Results")
+                            
+                            # Key metrics
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                st.metric(
+                                    label="Chi-Square Statistic",
+                                    value=f"{chisq_results['chi2']:.3f}"
+                                )
+                            with col2:
+                                st.metric(
+                                    label="p-value",
+                                    value=f"{chisq_results['p_value']:.4f}"
+                                )
+                            with col3:
+                                st.metric(
+                                    label="Cramer's V",
+                                    value=f"{chisq_results['cramers_v']:.3f}",
+                                    delta=chisq_results['effect_size']
+                                )
+                            
+                            # Interpretation
+                            if chisq_results['significant']:
+                                st.success(f"There is a statistically significant association between {categorical_feature} and {categorical_target} (p < {chisq_results['alpha']}).")
+                                st.write(f"The effect size is {chisq_results['effect_size'].lower()} (Cramer's V = {chisq_results['cramers_v']:.3f}).")
+                            else:
+                                st.info(f"There is no statistically significant association between {categorical_feature} and {categorical_target} (p > {chisq_results['alpha']}).")
+                            
+                            # Visualize the results
+                            fig = visualize_chi_square(chisq_results)
+                            st.pyplot(fig)
+                            plt.close(fig)  # Close the figure to prevent interference
+                            
+                            # Display contingency table
+                            st.markdown("### Contingency Table")
+                            st.dataframe(chisq_results['contingency_table'])
+                            
+                            # Store the results for the report
+                            if 'statistical_tests' not in st.session_state.report_data:
+                                st.session_state.report_data['statistical_tests'] = {}
+                            test_key = f"chisq_{categorical_feature}_by_{categorical_target}"
+                            st.session_state.report_data['statistical_tests'][test_key] = {
+                                'type': 'chi-square',
+                                'results': chisq_results,
+                                'description': f"Chi-square test of association between {categorical_feature} and {categorical_target}"
+                            }
+                    except Exception as e:
+                        st.error(f"Error performing chi-square test: {str(e)}")
+                        st.code(traceback.format_exc())
+            else:
+                st.warning("Not enough categorical variables found. Chi-square test requires two categorical variables.")
     
     with tab3:
         st.markdown("<div class='subheader'>ANOVA Test Analysis</div>", unsafe_allow_html=True)
