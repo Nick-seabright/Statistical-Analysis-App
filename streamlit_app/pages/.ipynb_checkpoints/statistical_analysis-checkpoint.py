@@ -255,8 +255,8 @@ def show_statistical_analysis():
                     except Exception as e:
                         st.error(f"Error performing chi-square test: {str(e)}")
                         st.code(traceback.format_exc())
-            else:
-                st.warning("Not enough categorical variables found. Chi-square test requires two categorical variables.")
+                else:
+                    st.warning("Not enough categorical variables found. Chi-square test requires two categorical variables.")
     
     with tab3:
         st.markdown("<div class='subheader'>ANOVA Test Analysis</div>", unsafe_allow_html=True)
@@ -362,11 +362,11 @@ def show_statistical_analysis():
                 except Exception as e:
                     st.error(f"Error performing ANOVA test: {str(e)}")
                     st.code(traceback.format_exc())
-        else:
-            if not numeric_features:
-                st.warning("No numeric features found. ANOVA requires a numeric feature.")
-            elif not multi_cat_features:
-                st.warning("No categorical features with 3+ groups found. ANOVA requires a categorical grouping variable with at least 3 groups.")
+            else:
+                if not numeric_features:
+                    st.warning("No numeric features found. ANOVA requires a numeric feature.")
+                elif not multi_cat_features:
+                    st.warning("No categorical features with 3+ groups found. ANOVA requires a categorical grouping variable with at least 3 groups.")
     
     with tab4:
         st.markdown("<div class='subheader'>Correlation Analysis</div>", unsafe_allow_html=True)
