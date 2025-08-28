@@ -209,12 +209,10 @@ def interpret_cramers_v(v: float) -> str:
 def visualize_chi_square(results: Dict) -> plt.Figure:
     """
     Create visualization for chi-square test results.
-    
     Parameters:
     -----------
     results : Dict
         Dictionary containing chi-square test results
-        
     Returns:
     --------
     matplotlib Figure
@@ -225,24 +223,51 @@ def visualize_chi_square(results: Dict) -> plt.Figure:
     sns.heatmap(results['contingency_table'], annot=True, fmt='d', cmap='YlGnBu', ax=ax1)
     ax1.set_title('Observed Frequencies')
     
-    # Plot 2: Mosaic plot
+    # Plot 2: Mosaic plot - Fix the data conversion to avoid type mismatch
     from statsmodels.graphics.mosaicplot import mosaic
+    
+    # Prepare data for mosaic plot - ensure all values are strings
     ct = results['contingency_table']
     
-    # Convert to format needed by mosaic plot
-    props = {}
-    if results['significant']:
-        # Color significant cells
+    try:
+        # Method 1: Convert the contingency table to a properly formatted dataset
+        props = {}
+        # Highlight cells with significant differences
         for i in range(ct.shape[0]):
             for j in range(ct.shape[1]):
-                if (results['contingency_table'].iloc[i, j] - results['expected'][i, j])**2 / results['expected'][i, j] > 3.84:  # Chi-square critical value for df=1, alpha=0.05
-                    key = (ct.index[i], ct.columns[j])
+                observed = ct.iloc[i, j]
+                expected = results['expected'][i, j]
+                # Check if cell contributes significantly to chi-square
+                if (observed - expected)**2 / expected > 3.84:  # Chi-square critical value for df=1, alpha=0.05
+                    key = (str(ct.index[i]), str(ct.columns[j]))  # Convert to strings
                     props[key] = {'facecolor': 'salmon'}
+        
+        # Create a DataFrame that's correctly formatted for mosaic
+        mosaic_data = []
+        for i in range(ct.shape[0]):
+            for j in range(ct.shape[1]):
+                # Add entries for each cell in the contingency table
+                # Convert all values to strings to avoid type issues
+                count = int(ct.iloc[i, j])  # Ensure count is an integer
+                for _ in range(count):
+                    mosaic_data.append([str(ct.index[i]), str(ct.columns[j])])
+        
+        # Create mosaic plot if we have data
+        if mosaic_data:
+            mosaic(mosaic_data, ax=ax2, properties=props)
+            ax2.set_title('Mosaic Plot')
+        else:
+            # Fallback if conversion failed
+            ax2.text(0.5, 0.5, "Mosaic plot unavailable - data format issue", 
+                     ha='center', va='center', fontsize=12)
+            ax2.axis('off')
     
-    mosaic(results['contingency_table'].stack().reset_index().values, 
-           ax=ax2, 
-           properties=props)
-    ax2.set_title('Mosaic Plot')
+    except Exception as e:
+        # Fallback visualization if mosaic plot fails
+        ax2.text(0.5, 0.5, f"Mosaic plot unavailable: {str(e)}", 
+                 ha='center', va='center', fontsize=12)
+        ax2.axis('off')
+        logger.warning(f"Error creating mosaic plot: {str(e)}")
     
     # Add test results as text
     plt.figtext(0.5, 0.01, f"Chi-square: {results['chi2']:.2f}, p-value: {results['p_value']:.4f}", ha='center')

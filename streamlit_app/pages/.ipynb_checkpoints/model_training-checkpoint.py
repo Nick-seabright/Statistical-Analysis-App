@@ -114,13 +114,43 @@ def show_model_training():
                             # Display feature importance
                             st.dataframe(importance_df)
                             
-                            # Plot feature importance
+                            # Plot feature importance with error handling for column names
                             fig, ax = plt.subplots(figsize=(10, 6))
-                            importance_df.sort_values('importance', ascending=True).tail(15).plot(
-                                kind='barh', x='feature', y='importance', ax=ax)
-                            plt.title('Feature Importance (Top 15)')
-                            plt.tight_layout()
-                            st.pyplot(fig)
+                            
+                            # Check column names and handle variations
+                            if 'importance' in importance_df.columns and 'feature' in importance_df.columns:
+                                # Standard column names
+                                importance_col = 'importance'
+                                feature_col = 'feature'
+                            elif 'Importance' in importance_df.columns and 'Feature' in importance_df.columns:
+                                # Capitalized column names
+                                importance_col = 'Importance'
+                                feature_col = 'Feature'
+                            elif len(importance_df.columns) >= 2:
+                                # Assume first column is feature name and second is importance
+                                feature_col = importance_df.columns[0]
+                                importance_col = importance_df.columns[1]
+                                st.info(f"Using columns: {feature_col} (feature) and {importance_col} (importance)")
+                            else:
+                                # Not enough columns or unrecognized format
+                                st.warning("Feature importance DataFrame has an unexpected format. Cannot plot.")
+                                feature_col = None
+                                importance_col = None
+                            
+                            # Plot if we have valid columns
+                            if feature_col is not None and importance_col is not None:
+                                try:
+                                    # Sort and plot
+                                    sorted_df = importance_df.sort_values(importance_col, ascending=True).tail(15)
+                                    sorted_df.plot(kind='barh', x=feature_col, y=importance_col, ax=ax)
+                                    plt.title('Feature Importance (Top 15)')
+                                    plt.tight_layout()
+                                    st.pyplot(fig)
+                                    plt.close(fig)  # Close the figure to prevent interference
+                                except Exception as e:
+                                    st.error(f"Error plotting feature importance: {str(e)}")
+                                    st.code(f"DataFrame columns: {importance_df.columns.tolist()}")
+                                    st.code(f"DataFrame sample:\n{importance_df.head().to_string()}")
                         
                         # Store results in report data
                         st.session_state.report_data['model_training'] = {
