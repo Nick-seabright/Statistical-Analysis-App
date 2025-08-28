@@ -58,27 +58,39 @@ def show_statistical_analysis():
         binary_features = [col for col in data.columns
                          if data[col].nunique() == 2]
         
-        # Select feature and grouping variable
-        numeric_feature = st.selectbox("Select numeric feature", numeric_features, key="ttest_feature")
-        
-        # For grouping, we can use the target if it's binary, or another binary feature
-        if target_type == 'categorical' and data[target_column].nunique() == 2:
-            default_group = target_column
+        # Check if we have the required types of features
+        if not numeric_features:
+            st.warning("T-test requires numeric features. No numeric features found in your dataset.")
+        elif not binary_features:
+            st.warning("T-test requires binary categorical variables for grouping. No binary variables found in your dataset.")
         else:
-            default_group = binary_features[0] if binary_features else None
+            # Select feature and grouping variable
+            numeric_feature = st.selectbox("Select numeric feature", numeric_features, key="ttest_feature")
             
-        if default_group:
-            grouping_variable = st.selectbox(
-                "Select grouping variable (must be binary)",
-                binary_features,
-                index=binary_features.index(default_group) if default_group in binary_features else 0,
-                key="ttest_group"
-            )
-            
-            # Perform t-test
-            if st.button("Perform T-Test", key="run_ttest"):
-                try:
-                    with st.spinner("Performing T-test..."):
+            # For grouping, we can use the target if it's binary, or another binary feature
+            if target_type == 'categorical' and data[target_column].nunique() == 2:
+                default_group = target_column
+            else:
+                default_group = binary_features[0] if binary_features else None
+                
+            # Safety check before creating selectbox
+            if default_group and binary_features:
+                # Find the index of default_group in binary_features
+                default_index = 0
+                if default_group in binary_features:
+                    default_index = binary_features.index(default_group)
+                    
+                grouping_variable = st.selectbox(
+                    "Select grouping variable (must be binary)",
+                    binary_features,
+                    index=default_index,
+                    key="ttest_group"
+                )
+                
+                # Perform t-test
+                if st.button("Perform T-Test", key="run_ttest"):
+                    try:
+                        with st.spinner("Performing T-test..."):
                         # Perform t-test
                         ttest_results = perform_t_test(
                             data=data,
@@ -154,25 +166,37 @@ def show_statistical_analysis():
                               if data[col].dtype == 'object'
                               or st.session_state.data_types.get(col) in ['categorical', 'boolean']]
         
-        # Select feature and target
-        if target_type == 'categorical':
-            default_target = target_column
+        # Handle the case when there are not enough categorical features
+        if len(categorical_features) < 2:
+            st.warning("Chi-square test requires at least two categorical variables. Not enough categorical variables found in your dataset.")
         else:
-            default_target = categorical_features[0] if categorical_features else None
-            
-        if categorical_features and default_target:
+            # Select feature and target
             categorical_feature = st.selectbox("Select categorical feature", categorical_features, key="chisq_feature")
-            categorical_target = st.selectbox(
-                "Select categorical target",
-                [col for col in categorical_features if col != categorical_feature],
-                index=categorical_features.index(default_target) if default_target in categorical_features and default_target != categorical_feature else 0,
-                key="chisq_target"
-            )
             
-            # Perform chi-square test
-            if st.button("Perform Chi-Square Test", key="run_chisq"):
-                try:
-                    with st.spinner("Performing Chi-Square test..."):
+            # Get remaining categorical features (excluding the one already selected)
+            remaining_categorical = [col for col in categorical_features if col != categorical_feature]
+            
+            if not remaining_categorical:
+                st.warning("Need at least one more categorical variable for chi-square test.")
+            else:
+                # Set default target - either the target column if categorical, or the first available categorical feature
+                if target_type == 'categorical' and target_column in remaining_categorical:
+                    default_index = remaining_categorical.index(target_column)
+                else:
+                    default_index = 0
+                
+                # Select the second categorical variable with proper index handling
+                categorical_target = st.selectbox(
+                    "Select categorical target",
+                    remaining_categorical,
+                    index=default_index,
+                    key="chisq_target"
+                )
+                
+                # Perform chi-square test
+                if st.button("Perform Chi-Square Test", key="run_chisq"):
+                    try:
+                        with st.spinner("Performing Chi-Square test..."):
                         # Perform chi-square test
                         chisq_results = perform_chi_square(
                             data=data,
@@ -253,8 +277,13 @@ def show_statistical_analysis():
                             and (data[col].dtype == 'object'
                                 or st.session_state.data_types.get(col) in ['categorical'])]
         
-        # Select feature and grouping variable
-        if numeric_features and multi_cat_features:
+        # Check if we have the required types of features
+        if not numeric_features:
+            st.warning("ANOVA requires numeric features. No numeric features found in your dataset.")
+        elif not multi_cat_features:
+            st.warning("ANOVA requires categorical features with 3+ groups. No such features found in your dataset.")
+        else:
+            # Select feature and grouping variable
             numeric_feature = st.selectbox("Select numeric feature for ANOVA", numeric_features, key="anova_numeric")
             grouping_variable = st.selectbox(
                 "Select grouping variable (3+ categories)",
