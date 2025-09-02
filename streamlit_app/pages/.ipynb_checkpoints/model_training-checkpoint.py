@@ -1585,10 +1585,12 @@ def show_model_training():
                         # Classification evaluation
                         from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, roc_curve, auc
                         
+                        # Calculate number of classes once, before using it
+                        n_classes = len(np.unique(y))
+                        
                         # Handle predictions based on model type
                         if is_neural_network:
                             # For neural networks, we need to convert predictions to classes
-                            n_classes = len(np.unique(y))
                             if n_classes == 2:  # Binary classification
                                 raw_predictions = model.predict(X_test)
                                 y_pred = (raw_predictions > 0.5).astype(int).flatten()
