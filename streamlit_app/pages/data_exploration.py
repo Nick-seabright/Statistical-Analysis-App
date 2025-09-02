@@ -6,7 +6,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 import sys
-from edu_analytics.utils import store_figure
 
 # Add the parent directory to path if running this file directly
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
@@ -78,8 +77,6 @@ def show_data_exploration():
                 plt.xlabel('Missing Percentage (%)')
                 plt.tight_layout()
                 st.pyplot(fig)
-
-                store_figure(fig, f"Distribution of {feature}", "exploration")
         else:
             st.info("No missing values found in the dataset.")
     
@@ -93,7 +90,6 @@ def show_data_exploration():
             corr_matrix = numeric_data.corr()
             sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', fmt='.2f', ax=ax)
             st.pyplot(fig)
-            store_figure(fig, f"Distribution of {feature}", "exploration")
             
             # Show top correlated features with target
             if target_column in corr_matrix.columns:
@@ -106,7 +102,6 @@ def show_data_exploration():
                 plt.ylabel('Correlation Coefficient')
                 plt.tight_layout()
                 st.pyplot(fig)
-                store_figure(fig, f"Distribution of {feature}", "exploration")
                 
                 # Display top positive and negative correlations
                 col1, col2 = st.columns(2)
@@ -133,7 +128,6 @@ def show_data_exploration():
             sns.histplot(data=data, x=dist_feature, kde=True, ax=ax)
             plt.title(f'Distribution of {dist_feature}')
             st.pyplot(fig)
-            store_figure(fig, f"Distribution of {feature}", "exploration")
             
             # Distribution by target if target is categorical and not too many categories
             if target_type == 'categorical' and data[target_column].nunique() <= 5:
@@ -141,7 +135,6 @@ def show_data_exploration():
                 sns.histplot(data=data, x=dist_feature, hue=target_column, kde=True, ax=ax)
                 plt.title(f'Distribution of {dist_feature} by {target_column}')
                 st.pyplot(fig)
-                store_figure(fig, f"Distribution of {feature}", "exploration")
         else:
             # Categorical feature - bar chart
             fig, ax = plt.subplots(figsize=(10, 6))
@@ -151,7 +144,6 @@ def show_data_exploration():
             plt.xticks(rotation=45, ha='right')
             plt.tight_layout()
             st.pyplot(fig)
-            store_figure(fig, f"Distribution of {feature}", "exploration")
             
             # Distribution by target if target is categorical
             if target_type == 'categorical' and data[target_column].nunique() <= 5:
@@ -168,7 +160,6 @@ def show_data_exploration():
                 plt.xticks(rotation=45, ha='right')
                 plt.tight_layout()
                 st.pyplot(fig)
-                store_figure(fig, f"Distribution of {feature}", "exploration")
     
     with tab4:
         st.markdown("<div class='subheader'>Feature Analysis</div>", unsafe_allow_html=True)
@@ -206,7 +197,6 @@ def show_data_exploration():
                     plt.ylabel(feature_for_analysis)
                     plt.tight_layout()
                     st.pyplot(fig)
-                    store_figure(fig, f"Distribution of {feature}", "exploration")
                 else:
                     # Scatter plot with target
                     fig, ax = plt.subplots(figsize=(8, 4))
@@ -216,7 +206,6 @@ def show_data_exploration():
                     plt.ylabel(target_column)
                     plt.tight_layout()
                     st.pyplot(fig)
-                    store_figure(fig, f"Distribution of {feature}", "exploration")
             
             # More visualizations
             fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
@@ -237,7 +226,6 @@ def show_data_exploration():
             
             plt.tight_layout()
             st.pyplot(fig)
-            store_figure(fig, f"Distribution of {feature}", "exploration")
             
         elif feature_type in ['categorical', 'boolean']:
             # Categorical feature analysis
@@ -258,7 +246,6 @@ def show_data_exploration():
                 plt.ylabel('')
                 plt.tight_layout()
                 st.pyplot(fig)
-                store_figure(fig, f"Distribution of {feature}", "exploration")
             
             # Stacked bar chart by target
             if target_type == 'categorical' and data[target_column].nunique() <= 5:
@@ -272,7 +259,6 @@ def show_data_exploration():
                 plt.xticks(rotation=45, ha='right')
                 plt.tight_layout()
                 st.pyplot(fig)
-                store_figure(fig, f"Distribution of {feature}", "exploration")
                 
                 # Also add percentage view
                 cross_tab_pct = pd.crosstab(
@@ -289,7 +275,6 @@ def show_data_exploration():
                 plt.xticks(rotation=45, ha='right')
                 plt.tight_layout()
                 st.pyplot(fig)
-                store_figure(fig, f"Distribution of {feature}", "exploration")
         
         elif feature_type == 'time':
             # Time feature analysis
@@ -328,7 +313,6 @@ def show_data_exploration():
                 plt.xlabel('Time (minutes)')
                 plt.tight_layout()
                 st.pyplot(fig)
-                store_figure(fig, f"Distribution of {feature}", "exploration")
             
             # Box plot by target if categorical
             if target_type == 'categorical' and data[target_column].nunique() <= 5:
@@ -338,7 +322,6 @@ def show_data_exploration():
                 plt.ylabel('Time (minutes)')
                 plt.tight_layout()
                 st.pyplot(fig)
-                store_figure(fig, f"Distribution of {feature}", "exploration")
                 
                 # Also show means by target
                 means_by_target = data.groupby(target_column)[feature_for_analysis].apply(
@@ -373,7 +356,6 @@ def show_data_exploration():
                 plt.ylabel('Count')
                 plt.tight_layout()
                 st.pyplot(fig)
-                store_figure(fig, f"Distribution of {feature}", "exploration")
             
             # Extract useful date components
             data_copy = data.copy()
@@ -392,7 +374,6 @@ def show_data_exploration():
                 plt.ylabel(f'Average {target_column}')
                 plt.tight_layout()
                 st.pyplot(fig)
-                store_figure(fig, f"Distribution of {feature}", "exploration")
             
             # Show target relationship with day of week
             if target_type == 'categorical':
@@ -404,7 +385,6 @@ def show_data_exploration():
                 plt.ylabel(f'Average {target_column}')
                 plt.tight_layout()
                 st.pyplot(fig)
-                store_figure(fig, f"Distribution of {feature}", "exploration")
 
 if __name__ == "__main__":
     show_data_exploration()

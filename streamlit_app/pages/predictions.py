@@ -6,7 +6,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 import sys
-from edu_analytics.utils import store_figure
 
 # Add the parent directory to path if running this file directly
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
@@ -160,7 +159,6 @@ def show_predictions():
                             plt.title('Prediction Probabilities')
                             plt.tight_layout()
                             st.pyplot(fig)
-                            store_figure(fig, f"Prediction Probabilities for {selected_model}", "prediction")
                         else:
                             # Just display the prediction
                             st.success(f"Prediction: {prediction_label}")
@@ -320,7 +318,6 @@ def show_predictions():
                                 plt.ylabel('Count')
                                 plt.tight_layout()
                                 st.pyplot(fig)
-                                store_figure(fig, f"Distribution of Predictions for {selected_model}", "prediction")
                                 
                                 # If we have probabilities, show distribution of confidence
                                 if hasattr(model, 'predict_proba'):
@@ -336,7 +333,6 @@ def show_predictions():
                                         plt.ylabel('Count')
                                         plt.tight_layout()
                                         st.pyplot(fig)
-                                        store_figure(fig, f"Distribution of Prediction Confidence for {selected_model}", "prediction")
                             
                             else:  # Numeric or time prediction
                                 # Distribution of predictions
@@ -354,7 +350,6 @@ def show_predictions():
                                 plt.ylabel('Count')
                                 plt.tight_layout()
                                 st.pyplot(fig)
-                                store_figure(fig, f"Distribution of Predictions for {selected_model}", "prediction")
                             
                             # Store batch prediction info in report data
                             if 'batch_predictions' not in st.session_state.report_data:

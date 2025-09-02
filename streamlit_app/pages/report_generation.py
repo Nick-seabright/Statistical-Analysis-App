@@ -20,7 +20,7 @@ from edu_analytics.utils import create_report_header
 
 def show_report_generation():
     st.markdown("<div class='subheader'>Report Generation</div>", unsafe_allow_html=True)
-    st.markdown("<div class='info-text'>Generate a comprehensive HTML report of your analysis.</div>", unsafe_allow_html=True)
+    st.markdown("<div class='info-text'>Generate a comprehensive report of your analysis.</div>", unsafe_allow_html=True)
     
     # Check if we have enough data for a report
     if 'report_data' not in st.session_state:
@@ -32,16 +32,22 @@ def show_report_generation():
     
     # Get available sections
     available_sections = []
+    
     if 'data' in st.session_state and st.session_state.data is not None:
         available_sections.append("Dataset Overview")
+    
     if 'statistical_tests' in st.session_state.report_data:
         available_sections.append("Statistical Analysis")
+    
     if 'threshold_analysis' in st.session_state.report_data:
         available_sections.append("Threshold Analysis")
+    
     if 'model_training' in st.session_state.report_data:
         available_sections.append("Model Training")
+    
     if 'model_evaluation' in st.session_state.report_data:
         available_sections.append("Model Evaluation")
+    
     if 'predictions' in st.session_state.report_data or 'batch_predictions' in st.session_state.report_data:
         available_sections.append("Predictions")
     
@@ -51,108 +57,6 @@ def show_report_generation():
         available_sections,
         default=available_sections
     )
-    
-    # Visualizations section
-    st.markdown("### Include Visualizations")
-    st.info("Select visualizations from your analyses to include in the report")
-    
-    # Create a container for storing selected visualizations
-    if 'selected_visualizations' not in st.session_state:
-        st.session_state.selected_visualizations = []
-    
-    # Display available visualizations in a tabbed interface
-    visualization_tabs = st.tabs(["Data Exploration", "Statistical Tests", "Models", "Predictions"])
-    
-    with visualization_tabs[0]:
-        st.subheader("Data Exploration Visualizations")
-        # These will be from the current session's matplotlib figures
-        # We'll need to store these in session_state as they're created
-        if 'exploration_figures' in st.session_state:
-            for i, (title, fig) in enumerate(st.session_state.exploration_figures):
-                col1, col2 = st.columns([3, 1])
-                with col1:
-                    st.pyplot(fig)
-                with col2:
-                    if st.checkbox(f"Include {title}", key=f"viz_exp_{i}"):
-                        if (title, fig) not in st.session_state.selected_visualizations:
-                            st.session_state.selected_visualizations.append((title, fig))
-                    else:
-                        if (title, fig) in st.session_state.selected_visualizations:
-                            st.session_state.selected_visualizations.remove((title, fig))
-        else:
-            st.info("No data exploration visualizations available. Explore your data to generate visualizations.")
-    
-    with visualization_tabs[1]:
-        st.subheader("Statistical Test Visualizations")
-        if 'statistical_tests' in st.session_state.report_data:
-            for test_key, test_data in st.session_state.report_data['statistical_tests'].items():
-                if 'results' in test_data and 'figure' in test_data:
-                    col1, col2 = st.columns([3, 1])
-                    with col1:
-                        st.pyplot(test_data['figure'])
-                    with col2:
-                        test_type = test_data.get('type', 'Test')
-                        test_desc = test_data.get('description', test_key)
-                        if st.checkbox(f"Include {test_type}: {test_desc}", key=f"viz_stat_{test_key}"):
-                            if (test_desc, test_data['figure']) not in st.session_state.selected_visualizations:
-                                st.session_state.selected_visualizations.append((test_desc, test_data['figure']))
-                        else:
-                            if (test_desc, test_data['figure']) in st.session_state.selected_visualizations:
-                                st.session_state.selected_visualizations.remove((test_desc, test_data['figure']))
-        else:
-            st.info("No statistical test visualizations available. Run statistical tests to generate visualizations.")
-    
-    with visualization_tabs[2]:
-        st.subheader("Model Visualizations")
-        if 'model_evaluation' in st.session_state.report_data or 'model_training' in st.session_state.report_data:
-            model_figures = []
-            
-            # Get figures from model training
-            if 'model_training' in st.session_state.report_data and 'figures' in st.session_state.report_data['model_training']:
-                model_figures.extend(st.session_state.report_data['model_training']['figures'])
-            
-            # Get figures from model evaluation
-            if 'model_evaluation' in st.session_state.report_data and 'figures' in st.session_state.report_data['model_evaluation']:
-                model_figures.extend(st.session_state.report_data['model_evaluation']['figures'])
-            
-            # Display all model figures
-            for i, (title, fig) in enumerate(model_figures):
-                col1, col2 = st.columns([3, 1])
-                with col1:
-                    st.pyplot(fig)
-                with col2:
-                    if st.checkbox(f"Include {title}", key=f"viz_model_{i}"):
-                        if (title, fig) not in st.session_state.selected_visualizations:
-                            st.session_state.selected_visualizations.append((title, fig))
-                    else:
-                        if (title, fig) in st.session_state.selected_visualizations:
-                            st.session_state.selected_visualizations.remove((title, fig))
-        else:
-            st.info("No model visualizations available. Train and evaluate models to generate visualizations.")
-    
-    with visualization_tabs[3]:
-        st.subheader("Prediction Visualizations")
-        if 'prediction_figures' in st.session_state:
-            for i, (title, fig) in enumerate(st.session_state.prediction_figures):
-                col1, col2 = st.columns([3, 1])
-                with col1:
-                    st.pyplot(fig)
-                with col2:
-                    if st.checkbox(f"Include {title}", key=f"viz_pred_{i}"):
-                        if (title, fig) not in st.session_state.selected_visualizations:
-                            st.session_state.selected_visualizations.append((title, fig))
-                    else:
-                        if (title, fig) in st.session_state.selected_visualizations:
-                            st.session_state.selected_visualizations.remove((title, fig))
-        else:
-            st.info("No prediction visualizations available. Make predictions to generate visualizations.")
-    
-    # Show selected visualizations
-    if st.session_state.selected_visualizations:
-        st.markdown("### Selected Visualizations")
-        st.write(f"{len(st.session_state.selected_visualizations)} visualizations will be included in the report")
-    else:
-        st.info("No visualizations selected for the report")
     
     # Report metadata
     st.markdown("### Report Metadata")
@@ -174,18 +78,26 @@ def show_report_generation():
                     report_data=st.session_state.report_data,
                     data=st.session_state.data if 'data' in st.session_state else None,
                     target_type=st.session_state.target_type if 'target_type' in st.session_state else None,
-                    target_column=st.session_state.processed_data['target_column'] if 'processed_data' in st.session_state else None,
-                    visualizations=st.session_state.selected_visualizations
+                    target_column=st.session_state.processed_data['target_column'] if 'processed_data' in st.session_state else None
                 )
                 
-                # Prepare the HTML report
-                html_report = prepare_report(report_html)
+                # Try to convert HTML to PDF
+                pdf_report = convert_html_to_pdf(report_html)
                 
-                # Generate filename
+                # Check if the conversion to PDF was successful
+                is_pdf = not (pdf_report == report_html.encode('utf-8'))
+                
+                # Generate filenames
                 html_filename = get_timestamped_filename("statistical_analysis_report", "html")
                 
                 # Save HTML report
-                html_success, html_message, html_path = save_file(html_report, html_filename, "reports")
+                html_success, html_message, html_path = save_file(report_html, html_filename, "reports")
+                
+                # Only attempt to save PDF if conversion was successful
+                pdf_success, pdf_message, pdf_path = False, "", ""
+                if is_pdf:
+                    pdf_filename = get_timestamped_filename("statistical_analysis_report", "pdf")
+                    pdf_success, pdf_message, pdf_path = save_file(pdf_report, pdf_filename, "reports")
                 
                 # Show success/error messages
                 if html_success:
@@ -193,10 +105,27 @@ def show_report_generation():
                 else:
                     st.warning(html_message)
                 
-                # Provide download button
+                if is_pdf:
+                    if pdf_success:
+                        st.success(f"PDF report saved: {pdf_path}")
+                    else:
+                        st.warning(pdf_message)
+                else:
+                    st.info("PDF generation is not available. HTML report has been created instead.")
+                    st.info("To enable PDF generation, you need to install system libraries: pango, libharfbuzz, libffi, and cairo.")
+                
+                # Provide download buttons
+                if is_pdf:
+                    st.download_button(
+                        label="Download Report (PDF)",
+                        data=pdf_report,
+                        file_name=get_timestamped_filename("statistical_analysis_report", "pdf"),
+                        mime='application/pdf',
+                    )
+                
                 st.download_button(
                     label="Download Report (HTML)",
-                    data=html_report,
+                    data=report_html,
                     file_name=html_filename,
                     mime='text/html',
                 )
@@ -208,55 +137,62 @@ def show_report_generation():
             st.error(f"Error generating report: {str(e)}")
             import traceback
             st.code(traceback.format_exc())
-
-def figure_to_base64(fig):
-    """
-    Convert a matplotlib figure to base64 encoded string
-    
-    Parameters:
-    -----------
-    fig : matplotlib.figure.Figure
-        Figure to convert
-    
-    Returns:
-    --------
-    str : Base64 encoded image string
-    """
-    from io import BytesIO
-    import base64
-    
-    buf = BytesIO()
-    fig.savefig(buf, format='png', dpi=150, bbox_inches='tight')
-    buf.seek(0)
-    return base64.b64encode(buf.read()).decode('utf-8')
+                
+        except Exception as e:
+            st.error(f"Error generating report: {str(e)}")
+            import traceback
+            st.code(traceback.format_exc())
 
 # Helper function to convert HTML to PDF
-def prepare_report(html_content):
+def convert_html_to_pdf(html_content):
     """
-    Prepare the HTML report for download
+    Convert HTML content to PDF
     Parameters:
     -----------
     html_content : str
-        HTML content of the report
+        HTML content to convert
     Returns:
     --------
-    bytes : HTML content as bytes
+    bytes : PDF content or HTML content as bytes if conversion fails
     """
-    # Add any necessary processing to the HTML content
-    # For example, add proper DOCTYPE, ensure responsive design, etc.
-    enhanced_html = f"""
+    # First try to use weasyprint if available
+    try:
+        from weasyprint import HTML
+        # Convert HTML to PDF
+        pdf_bytes = HTML(string=html_content).write_pdf()
+        return pdf_bytes
+    except ImportError:
+        st.warning("WeasyPrint is not installed. Downloading HTML file instead.")
+        return html_content.encode('utf-8')
+    except OSError as e:
+        # This happens when system libraries are missing
+        st.warning(f"PDF generation failed due to missing system libraries. Downloading HTML file instead.")
+        st.info("To enable PDF generation, install required system packages: pango, libharfbuzz, libffi, and cairo.")
+        # Log detailed error for debugging
+        import logging
+        logging.error(f"WeasyPrint error: {str(e)}")
+        return html_content.encode('utf-8')
+    except Exception as e:
+        # Handle any other unexpected errors
+        st.warning(f"PDF generation failed: {str(e)}. Downloading HTML file instead.")
+        return html_content.encode('utf-8')
+        
+# Helper function to generate HTML report
+def generate_html_report(title, author, sections, report_data, data=None, target_type=None, target_column=None):
+    """Generate an HTML report with the given sections and data"""
+    
+    # Get current date and time
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # Start HTML content
+    html = f"""
     <!DOCTYPE html>
     <html lang="en">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Statistical Analysis Report</title>
+        <title>{title}</title>
         <style>
-            @media print {{
-                @page {{ size: letter; margin: 1cm; }}
-                body {{ font-size: 12px; }}
-                .no-print {{ display: none; }}
-            }}
             body {{
                 font-family: Arial, sans-serif;
                 line-height: 1.6;
@@ -265,163 +201,117 @@ def prepare_report(html_content):
                 margin: 0 auto;
                 padding: 20px;
             }}
-            h1, h2, h3, h4 {{ color: #1E88E5; }}
-            img {{ max-width: 100%; height: auto; }}
-            table {{ width: 100%; border-collapse: collapse; margin: 1rem 0; }}
-            th, td {{ border: 1px solid #ddd; padding: 8px; }}
-            th {{ background-color: #f2f2f2; }}
-            .section {{ margin-top: 2rem; border-top: 1px solid #eee; padding-top: 1rem; }}
-            .footer {{ margin-top: 2rem; text-align: center; font-size: 0.9rem; color: #666; }}
-            .chart-container {{ 
-                text-align: center; 
-                margin: 1rem auto;
-                page-break-inside: avoid;
+            h1, h2, h3, h4 {{
+                color: #1E88E5;
+                margin-top: 24px;
             }}
-            /* Add print button styles */
-            .print-button {{
-                background-color: #1E88E5;
-                color: white;
-                border: none;
-                padding: 10px 15px;
-                border-radius: 4px;
-                cursor: pointer;
-                margin: 1rem 0;
+            .header {{
+                text-align: center;
+                margin-bottom: 40px;
+                padding-bottom: 20px;
+                border-bottom: 1px solid #ddd;
+            }}
+            .metadata {{
+                color: #666;
+                font-style: italic;
+                text-align: center;
+                margin-bottom: 30px;
+            }}
+            .section {{
+                margin-bottom: 40px;
+                padding: 20px;
+                background-color: #f9f9f9;
+                border-radius: 8px;
+            }}
+            table {{
+                width: 100%;
+                border-collapse: collapse;
+                margin: 20px 0;
+            }}
+            th, td {{
+                border: 1px solid #ddd;
+                padding: 8px 12px;
+                text-align: left;
+            }}
+            th {{
+                background-color: #f2f2f2;
+            }}
+            .img-container {{
+                text-align: center;
+                margin: 20px 0;
+            }}
+            .img-container img {{
+                max-width: 100%;
+                height: auto;
+            }}
+            .footer {{
+                text-align: center;
+                margin-top: 50px;
+                padding-top: 20px;
+                border-top: 1px solid #ddd;
+                color: #666;
+                font-size: 0.9em;
+            }}
+            .highlight {{
+                background-color: #e3f2fd;
+                padding: 2px 5px;
+                border-radius: 3px;
+            }}
+            .metric {{
+                font-weight: bold;
+                color: #1E88E5;
+            }}
+            .warning {{
+                color: #f57c00;
                 font-weight: bold;
             }}
-            .print-button:hover {{
-                background-color: #1976D2;
+            .chart {{
+                width: 100%;
+                max-width: 800px;
+                margin: 20px auto;
+                display: block;
             }}
         </style>
     </head>
     <body>
-        <!-- Add print button -->
-        <div class="no-print" style="text-align: right;">
-            <button class="print-button" onclick="window.print()">Print Report</button>
+        <div class="header">
+            <h1>{title}</h1>
         </div>
         
-        {html_content}
-        
-        <script>
-            // Add any JavaScript functionality here
-            document.addEventListener('DOMContentLoaded', function() {{
-                // Auto-resize tables if they're too wide
-                const tables = document.querySelectorAll('table');
-                tables.forEach(table => {{
-                    if (table.offsetWidth > table.parentElement.offsetWidth) {{
-                        table.style.fontSize = '0.9rem';
-                    }}
-                }});
-            }});
-        </script>
-    </body>
-    </html>
-    """
-    return enhanced_html.encode('utf-8')
-        
-# Helper function to generate HTML report
-def generate_html_report(
-    title, 
-    author, 
-    sections, 
-    report_data, 
-    data=None, 
-    target_type=None, 
-    target_column=None, 
-    visualizations=None
-):
-    """
-    Generate an HTML report with the given sections and data
-    Parameters:
-    -----------
-    title : str
-        Report title
-    author : str
-        Report author
-    sections : list
-        List of sections to include
-    report_data : dict
-        Report data from session state
-    data : DataFrame, optional
-        Original dataset
-    target_type : str, optional
-        Type of target variable
-    target_column : str, optional
-        Target column name
-    visualizations : list, optional
-        List of (title, figure) tuples to include in the report
-    Returns:
-    --------
-    str : HTML report content
-    """
-    # Get current date and time
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    # Start HTML content
-    html = f"""
-    <div class="header">
-        <h1>{title}</h1>
-    </div>
-    <div class="metadata">
-        <p>Generated on: {now}</p>
-        {f'<p>Author: {author}</p>' if author else ''}
-    </div>
-    """
-    
-    # Add selected visualizations section if any are provided
-    if visualizations and len(visualizations) > 0:
-        html += """
-        <div class="section">
-            <h2>Selected Visualizations</h2>
-            <div class="visualization-gallery">
-        """
-        
-        for i, (viz_title, fig) in enumerate(visualizations):
-            # Convert matplotlib figure to base64 encoded PNG
-            from io import BytesIO
-            import base64
-            
-            buf = BytesIO()
-            fig.savefig(buf, format='png', dpi=150, bbox_inches='tight')
-            buf.seek(0)
-            img_str = base64.b64encode(buf.read()).decode('utf-8')
-            
-            html += f"""
-            <div class="chart-container">
-                <h3>{viz_title}</h3>
-                <img src="data:image/png;base64,{img_str}" alt="{viz_title}">
-            </div>
-            """
-            
-            # Add a separator unless it's the last visualization
-            if i < len(visualizations) - 1:
-                html += "<hr style='border-top: 1px dashed #ccc; margin: 2rem 0;'>"
-        
-        html += """
-            </div>
+        <div class="metadata">
+            <p>Generated on: {now}</p>
+            {f'<p>Author: {author}</p>' if author else ''}
         </div>
-        """
+    """
     
     # Add content for each selected section
     for section in sections:
         if section == "Dataset Overview" and data is not None:
             html += generate_dataset_overview_section(data, target_type, target_column)
+        
         elif section == "Statistical Analysis" and 'statistical_tests' in report_data:
             html += generate_statistical_analysis_section(report_data['statistical_tests'])
+        
         elif section == "Threshold Analysis" and 'threshold_analysis' in report_data:
             html += generate_threshold_analysis_section(report_data['threshold_analysis'])
+        
         elif section == "Model Training" and 'model_training' in report_data:
             html += generate_model_training_section(report_data['model_training'])
+        
         elif section == "Model Evaluation" and 'model_evaluation' in report_data:
             html += generate_model_evaluation_section(report_data['model_evaluation'])
+        
         elif section == "Predictions" and ('predictions' in report_data or 'batch_predictions' in report_data):
             html += generate_predictions_section(report_data)
     
     # Add footer
     html += f"""
-    <div class="footer">
-        <p>Generated using Statistical Analysis App</p>
-        <p>© {datetime.now().year}</p>
-    </div>
+        <div class="footer">
+            <p>Generated using Statistical Analysis App</p>
+            <p>© {datetime.now().year}</p>
+        </div>
+    </body>
+    </html>
     """
     
     return html
