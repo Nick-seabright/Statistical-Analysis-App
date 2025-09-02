@@ -560,3 +560,41 @@ def calculate_confidence_interval(
     interval = sem * stats.t.ppf((1 + confidence) / 2, len(data) - 1)
     
     return mean - interval, mean + interval
+
+def store_figure(fig, title, category="exploration"):
+    """
+    Store a matplotlib figure in session state for later use in reports
+    
+    Parameters:
+    -----------
+    fig : matplotlib.figure.Figure
+        The figure to store
+    title : str
+        Title/description of the figure
+    category : str
+        Category of the figure (exploration, statistical, model, prediction)
+    """
+    # Make a deep copy of the figure to avoid modification issues
+    import copy
+    fig_copy = copy.deepcopy(fig)
+    
+    # Store in the appropriate session state collection
+    if category == "exploration":
+        if "exploration_figures" not in st.session_state:
+            st.session_state.exploration_figures = []
+        st.session_state.exploration_figures.append((title, fig_copy))
+    
+    elif category == "statistical":
+        if "statistical_figures" not in st.session_state:
+            st.session_state.statistical_figures = []
+        st.session_state.statistical_figures.append((title, fig_copy))
+    
+    elif category == "model":
+        if "model_figures" not in st.session_state:
+            st.session_state.model_figures = []
+        st.session_state.model_figures.append((title, fig_copy))
+    
+    elif category == "prediction":
+        if "prediction_figures" not in st.session_state:
+            st.session_state.prediction_figures = []
+        st.session_state.prediction_figures.append((title, fig_copy))

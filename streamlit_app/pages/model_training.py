@@ -8,6 +8,7 @@ import os
 import sys
 from edu_analytics.utils import save_file, get_timestamped_filename
 import pickle
+from edu_analytics.utils import store_figure
 
 # Add the parent directory to path if running this file directly
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
@@ -147,6 +148,7 @@ def show_model_training():
                                     plt.tight_layout()
                                     st.pyplot(fig)
                                     plt.close(fig)  # Close the figure to prevent interference
+                                    store_figure(fig, f"Feature Importance for {model_name}", "model")
                                 except Exception as e:
                                     st.error(f"Error plotting feature importance: {str(e)}")
                                     st.code(f"DataFrame columns: {importance_df.columns.tolist()}")
@@ -238,6 +240,7 @@ def show_model_training():
                             plt.title('Feature Importance (Top 15)')
                             plt.tight_layout()
                             st.pyplot(fig)
+                            store_figure(fig, f"Feature Importance for {model_name}", "model")
                         
                         # Store results in report data
                         st.session_state.report_data['model_training'] = {
@@ -333,6 +336,7 @@ def show_model_training():
                             plt.ylabel('True Label')
                             plt.xlabel('Predicted Label')
                             st.pyplot(fig)
+                            store_figure(fig, f"Confusion Matrix for {selected_model}", "model")
                             
                             # Feature importance
                             importances = model.feature_importances_
@@ -353,6 +357,7 @@ def show_model_training():
                             plt.title('Feature Importance (Top 15)')
                             plt.tight_layout()
                             st.pyplot(fig)
+                            store_figure(fig, f"Feature Importance for {model_name}", "model")
                             
                             # Store model
                             if 'models' not in st.session_state:
@@ -451,6 +456,7 @@ def show_model_training():
                             plt.ylabel('Predicted')
                             plt.tight_layout()
                             st.pyplot(fig)
+                            store_figure(fig, f"Actual vs Predicted for {model_name}", "model")
                             
                             # Feature importance
                             importances = model.feature_importances_
@@ -471,6 +477,7 @@ def show_model_training():
                             plt.title('Feature Importance (Top 15)')
                             plt.tight_layout()
                             st.pyplot(fig)
+                            store_figure(fig, f"Feature Importance for {model_name}", "model")
                             
                             # Store model
                             if 'models' not in st.session_state:
@@ -572,6 +579,7 @@ def show_model_training():
                             plt.ylabel('True Label')
                             plt.xlabel('Predicted Label')
                             st.pyplot(fig)
+                            store_figure(fig, f"Confusion Matrix for {selected_model}", "model")
                             
                             # Feature importance
                             importances = model.feature_importances_
@@ -592,6 +600,7 @@ def show_model_training():
                             plt.title('Feature Importance (Top 15)')
                             plt.tight_layout()
                             st.pyplot(fig)
+                            store_figure(fig, f"Feature Importance for {model_name}", "model")
                             
                             # Store model
                             if 'models' not in st.session_state:
@@ -693,6 +702,7 @@ def show_model_training():
                             plt.ylabel('Predicted')
                             plt.tight_layout()
                             st.pyplot(fig)
+                            store_figure(fig, f"Actual vs Predicted for {model_name}", "model")
                             
                             # Feature importance
                             importances = model.feature_importances_
@@ -713,6 +723,7 @@ def show_model_training():
                             plt.title('Feature Importance (Top 15)')
                             plt.tight_layout()
                             st.pyplot(fig)
+                            store_figure(fig, f"Feature Importance for {model_name}", "model")
                             
                             # Store model
                             if 'models' not in st.session_state:
@@ -906,6 +917,7 @@ def show_model_training():
                             plt.ylabel('True Label')
                             plt.xlabel('Predicted Label')
                             st.pyplot(fig)
+                            store_figure(fig, f"Confusion Matrix for {selected_model}", "model")
                             
                             # Calculate permutation importance
                             if X_test.shape[0] > 1000:
@@ -960,6 +972,7 @@ def show_model_training():
                                 plt.title('Feature Importance (Permutation Method)')
                                 plt.tight_layout()
                                 st.pyplot(fig)
+                                store_figure(fig, f"Feature Importance for {model_name}", "model")
                             except Exception as e:
                                 st.info(f"Could not calculate permutation importance: {str(e)}")
                                 st.info("This is normal for large datasets or complex models.")
@@ -1148,6 +1161,7 @@ def show_model_training():
                             plt.ylabel('Predicted')
                             plt.tight_layout()
                             st.pyplot(fig)
+                            store_figure(fig, f"Actual vs Predicted for {model_name}", "model")
                             
                             # Error distribution
                             fig, ax = plt.subplots(figsize=(10, 6))
@@ -1159,6 +1173,7 @@ def show_model_training():
                             plt.axvline(x=0, color='r', linestyle='--')
                             plt.tight_layout()
                             st.pyplot(fig)
+                            store_figure(fig, f"Error Distribution for {model_name}", "model")
                             
                             # Calculate permutation importance
                             try:
@@ -1200,6 +1215,7 @@ def show_model_training():
                                 plt.title('Feature Importance (Permutation Method)')
                                 plt.tight_layout()
                                 st.pyplot(fig)
+                                store_figure(fig, f"Feature Importance (Permutation Method) for {model_name}", "model")
                             except Exception as e:
                                 st.info(f"Could not calculate permutation importance: {str(e)}")
                                 st.info("This is normal for large datasets or complex models.")
@@ -1324,6 +1340,7 @@ def show_model_training():
                             plt.ylabel('True Label')
                             plt.xlabel('Predicted Label')
                             st.pyplot(fig)
+                            store_figure(fig, f"Confusion Matrix for {selected_model}", "model")
                             
                             # Calculate permutation importance
                             try:
@@ -1353,6 +1370,7 @@ def show_model_training():
                                 plt.title('Feature Importance (Permutation Method)')
                                 plt.tight_layout()
                                 st.pyplot(fig)
+                                store_figure(fig, f"Feature Importance for {model_name}", "model")
                             except Exception as e:
                                 st.info(f"Could not calculate permutation importance: {str(e)}")
                                 importance_df = pd.DataFrame(columns=['feature', 'importance', 'std'])
@@ -1455,6 +1473,7 @@ def show_model_training():
                             plt.ylabel('Predicted')
                             plt.tight_layout()
                             st.pyplot(fig)
+                            store_figure(fig, f"Actual vs Predicted for {model_name}", "model")
                             
                             # Error distribution
                             fig, ax = plt.subplots(figsize=(10, 6))
@@ -1466,6 +1485,7 @@ def show_model_training():
                             plt.axvline(x=0, color='r', linestyle='--')
                             plt.tight_layout()
                             st.pyplot(fig)
+                            store_figure(fig, f"Error Distribution for {model_name}", "model")
                             
                             # Calculate permutation importance
                             try:
@@ -1495,6 +1515,7 @@ def show_model_training():
                                 plt.title('Feature Importance (Permutation Method)')
                                 plt.tight_layout()
                                 st.pyplot(fig)
+                                store_figure(fig, f"Feature Importance (Permutation Method) for {model_name}", "model")
                             except Exception as e:
                                 st.info(f"Could not calculate permutation importance: {str(e)}")
                                 importance_df = pd.DataFrame(columns=['feature', 'importance', 'std'])
@@ -1622,6 +1643,7 @@ def show_model_training():
                         plt.ylabel('True Label')
                         plt.xlabel('Predicted Label')
                         st.pyplot(fig)
+                        store_figure(fig, f"Confusion Matrix for {selected_model}", "model")
                         
                         # ROC curve for binary classification
                         if n_classes == 2 and (hasattr(model, 'predict_proba') or is_neural_network):
@@ -1648,6 +1670,7 @@ def show_model_training():
                             plt.title('Receiver Operating Characteristic')
                             plt.legend(loc="lower right")
                             st.pyplot(fig)
+                            store_figure(fig, f"ROC Curve for {selected_model}", "model")
                         
                         # Feature importance (tree-based models) or permutation importance (other models)
                         if hasattr(model, 'feature_importances_'):
@@ -1660,6 +1683,7 @@ def show_model_training():
                             plt.title('Feature Importance')
                             plt.tight_layout()
                             st.pyplot(fig)
+                            store_figure(fig, f"Feature Importance for {model_name}", "model")
                         else:
                             # For non-tree models, calculate permutation importance
                             st.markdown("### Feature Importance (Permutation Method)")
@@ -1707,6 +1731,7 @@ def show_model_training():
                                 plt.title('Feature Importance (Permutation Method)')
                                 plt.tight_layout()
                                 st.pyplot(fig)
+                                store_figure(fig, f"Feature Importance (Permutation Method) for {model_name}", "model")
                             except Exception as e:
                                 st.info(f"Could not calculate permutation importance: {str(e)}")
                     
@@ -1741,6 +1766,7 @@ def show_model_training():
                         plt.ylabel("Predicted")
                         plt.title("Actual vs Predicted Values")
                         st.pyplot(fig)
+                        store_figure(fig, f"Actual vs Predicted for {model_name}", "model")
                         
                         # Error distribution
                         st.markdown("### Error Distribution")
@@ -1753,6 +1779,7 @@ def show_model_training():
                         plt.axvline(x=0, color='r', linestyle='--')
                         plt.tight_layout()
                         st.pyplot(fig)
+                        store_figure(fig, f"Error Distribution for {model_name}", "model")
                         
                         # Feature importance (tree-based models) or permutation importance (other models)
                         if hasattr(model, 'feature_importances_'):
@@ -1765,6 +1792,7 @@ def show_model_training():
                             plt.title('Feature Importance')
                             plt.tight_layout()
                             st.pyplot(fig)
+                            store_figure(fig, f"Feature Importance for {model_name}", "model")
                         else:
                             # For non-tree models, calculate permutation importance
                             st.markdown("### Feature Importance (Permutation Method)")
@@ -1808,6 +1836,7 @@ def show_model_training():
                                 plt.title('Feature Importance (Permutation Method)')
                                 plt.tight_layout()
                                 st.pyplot(fig)
+                                store_figure(fig, f"Feature Importance (Permutation Method) for {model_name}", "model")
                             except Exception as e:
                                 st.info(f"Could not calculate permutation importance: {str(e)}")
                                 

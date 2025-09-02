@@ -146,7 +146,8 @@ def show_statistical_analysis():
                             st.session_state.report_data['statistical_tests'][test_key] = {
                                 'type': 't-test',
                                 'results': ttest_results,
-                                'description': f"T-test comparing {numeric_feature} means between {grouping_variable} groups"
+                                'description': f"T-test comparing {numeric_feature} means between {grouping_variable} groups",
+                                'figure': fig
                             }
                     except Exception as e:
                         st.error(f"Error performing t-test: {str(e)}")
@@ -250,7 +251,8 @@ def show_statistical_analysis():
                             st.session_state.report_data['statistical_tests'][test_key] = {
                                 'type': 'chi-square',
                                 'results': chisq_results,
-                                'description': f"Chi-square test of association between {categorical_feature} and {categorical_target}"
+                                'description': f"Chi-square test of association between {categorical_feature} and {categorical_target}",
+                                'figure': fig
                             }
                     except Exception as e:
                         st.error(f"Error performing chi-square test: {str(e)}")
@@ -355,7 +357,8 @@ def show_statistical_analysis():
                         st.session_state.report_data['statistical_tests'][test_key] = {
                             'type': 'anova',
                             'results': anova_results,
-                            'description': f"ANOVA test comparing {numeric_feature} means across {grouping_variable} groups"
+                            'description': f"ANOVA test comparing {numeric_feature} means across {grouping_variable} groups",
+                            'figure': fig
                         }
                 except Exception as e:
                     st.error(f"Error performing ANOVA test: {str(e)}")
@@ -656,7 +659,8 @@ def show_statistical_analysis():
                                 st.session_state.report_data['statistical_tests']['correlation_analysis'] = {
                                     'type': 'correlation',
                                     'results': corr_results,
-                                    'description': f"Correlation analysis between numeric features and {target_column}"
+                                    'description': f"Correlation analysis between numeric features and {target_column}",
+                                    'figure': fig
                                 }
                         except Exception as e:
                             st.error(f"Error performing correlation analysis: {str(e)}")
@@ -735,7 +739,8 @@ def show_statistical_analysis():
                             st.session_state.report_data['statistical_tests']['feature_importance'] = {
                                 'type': 'feature_importance',
                                 'results': feature_imp,
-                                'description': f"Feature importance analysis for predicting {target_column}"
+                                'description': f"Feature importance analysis for predicting {target_column}",
+                                'figure': fig
                             }
                     except Exception as e:
                         st.error(f"Error analyzing feature importance: {str(e)}")
