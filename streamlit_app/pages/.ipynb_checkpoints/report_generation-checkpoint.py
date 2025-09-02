@@ -68,7 +68,6 @@ def show_report_generation():
         if not selected_sections:
             st.warning("Please select at least one section to include in the report.")
             return
-        
         try:
             with st.spinner("Generating report..."):
                 # Create report content
@@ -82,35 +81,47 @@ def show_report_generation():
                     target_column=st.session_state.processed_data['target_column'] if 'processed_data' in st.session_state else None
                 )
                 
-                # Convert HTML to PDF
+                # Try to convert HTML to PDF
                 pdf_report = convert_html_to_pdf(report_html)
+                
+                # Check if the conversion to PDF was successful
+                is_pdf = not (pdf_report == report_html.encode('utf-8'))
                 
                 # Generate filenames
                 html_filename = get_timestamped_filename("statistical_analysis_report", "html")
-                pdf_filename = get_timestamped_filename("statistical_analysis_report", "pdf")
                 
-                # Save files to user-specified directory
+                # Save HTML report
                 html_success, html_message, html_path = save_file(report_html, html_filename, "reports")
-                pdf_success, pdf_message, pdf_path = save_file(pdf_report, pdf_filename, "reports")
+                
+                # Only attempt to save PDF if conversion was successful
+                pdf_success, pdf_message, pdf_path = False, "", ""
+                if is_pdf:
+                    pdf_filename = get_timestamped_filename("statistical_analysis_report", "pdf")
+                    pdf_success, pdf_message, pdf_path = save_file(pdf_report, pdf_filename, "reports")
                 
                 # Show success/error messages
                 if html_success:
                     st.success(f"HTML report saved: {html_path}")
                 else:
                     st.warning(html_message)
-                    
-                if pdf_success:
-                    st.success(f"PDF report saved: {pdf_path}")
-                else:
-                    st.warning(pdf_message)
                 
-                # Also provide download buttons as backup
-                st.download_button(
-                    label="Download Report (PDF)",
-                    data=pdf_report,
-                    file_name=pdf_filename,
-                    mime='application/pdf',
-                )
+                if is_pdf:
+                    if pdf_success:
+                        st.success(f"PDF report saved: {pdf_path}")
+                    else:
+                        st.warning(pdf_message)
+                else:
+                    st.info("PDF generation is not available. HTML report has been created instead.")
+                    st.info("To enable PDF generation, you need to install system libraries: pango, libharfbuzz, libffi, and cairo.")
+                
+                # Provide download buttons
+                if is_pdf:
+                    st.download_button(
+                        label="Download Report (PDF)",
+                        data=pdf_report,
+                        file_name=get_timestamped_filename("statistical_analysis_report", "pdf"),
+                        mime='application/pdf',
+                    )
                 
                 st.download_button(
                     label="Download Report (HTML)",
@@ -122,6 +133,10 @@ def show_report_generation():
                 # Show preview
                 st.markdown("### Report Preview")
                 st.components.v1.html(report_html, height=600, scrolling=True)
+        except Exception as e:
+            st.error(f"Error generating report: {str(e)}")
+            import traceback
+            st.code(traceback.format_exc())
                 
         except Exception as e:
             st.error(f"Error generating report: {str(e)}")
@@ -130,21 +145,38 @@ def show_report_generation():
 
 # Helper function to convert HTML to PDF
 def convert_html_to_pdf(html_content):
-    """Convert HTML content to PDF"""
-    # For simplicity, we'll just return the HTML as bytes
-    # In a real app, you'd use a library like weasyprint or a service like wkhtmltopdf
+    """
+    Convert HTML content to PDF
+    Parameters:
+    -----------
+    html_content : str
+        HTML content to convert
+    Returns:
+    --------
+    bytes : PDF content or HTML content as bytes if conversion fails
+    """
+    # First try to use weasyprint if available
     try:
-        # Try to import weasyprint if available
         from weasyprint import HTML
-        
         # Convert HTML to PDF
         pdf_bytes = HTML(string=html_content).write_pdf()
         return pdf_bytes
     except ImportError:
-        # If weasyprint is not available, return HTML bytes instead
-        st.warning("WeasyPrint not available. Downloading HTML file instead.")
+        st.warning("WeasyPrint is not installed. Downloading HTML file instead.")
         return html_content.encode('utf-8')
-
+    except OSError as e:
+        # This happens when system libraries are missing
+        st.warning(f"PDF generation failed due to missing system libraries. Downloading HTML file instead.")
+        st.info("To enable PDF generation, install required system packages: pango, libharfbuzz, libffi, and cairo.")
+        # Log detailed error for debugging
+        import logging
+        logging.error(f"WeasyPrint error: {str(e)}")
+        return html_content.encode('utf-8')
+    except Exception as e:
+        # Handle any other unexpected errors
+        st.warning(f"PDF generation failed: {str(e)}. Downloading HTML file instead.")
+        return html_content.encode('utf-8')
+        
 # Helper function to generate HTML report
 def generate_html_report(title, author, sections, report_data, data=None, target_type=None, target_column=None):
     """Generate an HTML report with the given sections and data"""

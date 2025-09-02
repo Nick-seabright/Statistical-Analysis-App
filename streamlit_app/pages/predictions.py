@@ -85,16 +85,40 @@ def show_predictions():
                     # Get selected model
                     model = st.session_state.models[selected_model]
                     
-                    # Preprocess input data
+                    # Preprocess input data using the utility function
                     input_processed = preprocess_input_data(input_values, data_types)
                     
-                    # Create input array for prediction
-                    input_df = pd.DataFrame([input_processed])
+                    # Create input DataFrame with proper column names
+                    input_df = pd.DataFrame([input_processed], columns=selected_features)
+                    
+                    # Apply categorical encoding
+                    if hasattr(st.session_state, 'categorical_encoders') and st.session_state.categorical_encoders:
+                        for feature, encoder in st.session_state.categorical_encoders.items():
+                            if feature in input_df.columns:
+                                try:
+                                    # Convert to string to ensure compatibility
+                                    input_df[feature] = encoder.transform(input_df[feature].astype(str))
+                                except Exception as e:
+                                    st.error(f"Error encoding {feature}: {str(e)}")
+                                    st.info(f"Valid values for {feature} are: {', '.join(encoder.classes_)}")
+                                    return
+                    
+                    # Make sure all values are numeric before scaling
+                    for col in input_df.columns:
+                        if not pd.api.types.is_numeric_dtype(input_df[col]):
+                            st.error(f"Column {col} contains non-numeric values: {input_df[col].iloc[0]}")
+                            st.info(f"This might happen if categorical encoding failed. Check your input values.")
+                            return
                     
                     # Scale the input data if a scaler is available
                     if hasattr(st.session_state, 'scaler') and st.session_state.scaler is not None:
                         scaler = st.session_state.scaler
-                        input_scaled = scaler.transform(input_df)
+                        try:
+                            input_scaled = scaler.transform(input_df)
+                        except Exception as e:
+                            st.error(f"Error during scaling: {str(e)}")
+                            st.info("Please ensure all input values match the expected data types.")
+                            return
                     else:
                         input_scaled = input_df.values
                     
