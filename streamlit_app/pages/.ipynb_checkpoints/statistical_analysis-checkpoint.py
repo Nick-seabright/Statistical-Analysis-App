@@ -255,8 +255,6 @@ def show_statistical_analysis():
                     except Exception as e:
                         st.error(f"Error performing chi-square test: {str(e)}")
                         st.code(traceback.format_exc())
-                else:
-                    st.warning("Not enough categorical variables found. Chi-square test requires two categorical variables.")
     
     with tab3:
         st.markdown("<div class='subheader'>ANOVA Test Analysis</div>", unsafe_allow_html=True)
