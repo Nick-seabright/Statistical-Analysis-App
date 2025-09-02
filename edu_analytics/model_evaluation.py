@@ -441,3 +441,43 @@ def create_model_report(
     results['plots'] = plots
     
     return results
+
+def calculate_permutation_importance(model, X, y, n_repeats=10, random_state=42):
+    """
+    Calculate feature importance using permutation importance method.
+    Works with any model type that has a predict method.
+    
+    Parameters:
+    -----------
+    model : trained model
+        The model to evaluate
+    X : DataFrame
+        Feature data
+    y : Series
+        Target data
+    n_repeats : int
+        Number of times to permute each feature
+    random_state : int
+        Random seed
+        
+    Returns:
+    --------
+    DataFrame with feature importance scores
+    """
+    from sklearn.inspection import permutation_importance
+    
+    # Calculate permutation importance
+    result = permutation_importance(
+        model, X, y, 
+        n_repeats=n_repeats, 
+        random_state=random_state
+    )
+    
+    # Create DataFrame with results
+    importance_df = pd.DataFrame({
+        'feature': X.columns,
+        'importance': result.importances_mean,
+        'std': result.importances_std
+    })
+    
+    return importance_df.sort_values('importance', ascending=False)
