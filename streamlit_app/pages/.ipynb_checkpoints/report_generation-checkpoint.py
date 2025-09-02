@@ -27,18 +27,6 @@ def show_report_generation():
         st.warning("No analysis data available for report generation. Please perform some analysis first.")
         return
     
-    # Debug: Show stored visualizations
-    debug_expander = st.expander("Debug: View stored visualizations", expanded=False)
-    with debug_expander:
-        for category in ['exploration', 'statistical', 'model', 'prediction']:
-            key = f"{category}_figures"
-            if key in st.session_state:
-                st.write(f"**{category.capitalize()} Figures:** {len(st.session_state[key])}")
-                for i, (title, _) in enumerate(st.session_state[key]):
-                    st.write(f"  {i+1}. {title}")
-            else:
-                st.write(f"**{category.capitalize()} Figures:** None")
-    
     # Report options
     st.markdown("### Report Options")
     
@@ -46,16 +34,15 @@ def show_report_generation():
     available_sections = []
     if 'data' in st.session_state and st.session_state.data is not None:
         available_sections.append("Dataset Overview")
-    if 'statistical_tests' in st.session_state.report_data and st.session_state.report_data['statistical_tests']:
+    if 'statistical_tests' in st.session_state.report_data:
         available_sections.append("Statistical Analysis")
-    if 'threshold_analysis' in st.session_state.report_data and st.session_state.report_data['threshold_analysis']:
+    if 'threshold_analysis' in st.session_state.report_data:
         available_sections.append("Threshold Analysis")
-    if 'model_training' in st.session_state.report_data and st.session_state.report_data['model_training']:
+    if 'model_training' in st.session_state.report_data:
         available_sections.append("Model Training")
-    if 'model_evaluation' in st.session_state.report_data and st.session_state.report_data['model_evaluation']:
+    if 'model_evaluation' in st.session_state.report_data:
         available_sections.append("Model Evaluation")
-    if ('predictions' in st.session_state.report_data and st.session_state.report_data['predictions']) or \
-       ('batch_predictions' in st.session_state.report_data and st.session_state.report_data['batch_predictions']):
+    if 'predictions' in st.session_state.report_data or 'batch_predictions' in st.session_state.report_data:
         available_sections.append("Predictions")
     
     # Allow user to select sections to include
@@ -65,75 +52,105 @@ def show_report_generation():
         default=available_sections
     )
     
-    # Initialize or clear selected visualizations
+    # Visualizations section
+    st.markdown("### Include Visualizations")
+    st.info("Select visualizations from your analyses to include in the report")
+    
+    # Create a container for storing selected visualizations
     if 'selected_visualizations' not in st.session_state:
         st.session_state.selected_visualizations = []
     
-    # Visualizations section
-    st.markdown("### Include Visualizations")
-    st.info("Select visualizations to include in your report")
-    
-    # Create a tabbed interface for visualizations
+    # Display available visualizations in a tabbed interface
     visualization_tabs = st.tabs(["Data Exploration", "Statistical Tests", "Models", "Predictions"])
     
-    # Helper function to display figures with checkboxes
-    def display_figures(figures, prefix):
-        if not figures:
-            st.info(f"No visualizations available in this category.")
-            return
-            
-        for i, (title, fig) in enumerate(figures):
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                st.pyplot(fig)
-            with col2:
-                include_viz = st.checkbox(f"Include in report", key=f"{prefix}_{i}")
-                if include_viz:
-                    # Add to selected visualizations if not already there
-                    if (title, fig) not in st.session_state.selected_visualizations:
-                        st.session_state.selected_visualizations.append((title, fig))
-                else:
-                    # Remove if it was previously selected
-                    st.session_state.selected_visualizations = [
-                        (t, f) for t, f in st.session_state.selected_visualizations 
-                        if t != title
-                    ]
-    
-    # Data Exploration visualizations
     with visualization_tabs[0]:
         st.subheader("Data Exploration Visualizations")
+        # These will be from the current session's matplotlib figures
+        # We'll need to store these in session_state as they're created
         if 'exploration_figures' in st.session_state:
-            display_figures(st.session_state.exploration_figures, "viz_exp")
+            for i, (title, fig) in enumerate(st.session_state.exploration_figures):
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    st.pyplot(fig)
+                with col2:
+                    if st.checkbox(f"Include {title}", key=f"viz_exp_{i}"):
+                        if (title, fig) not in st.session_state.selected_visualizations:
+                            st.session_state.selected_visualizations.append((title, fig))
+                    else:
+                        if (title, fig) in st.session_state.selected_visualizations:
+                            st.session_state.selected_visualizations.remove((title, fig))
         else:
-            st.info("No data exploration visualizations available.")
+            st.info("No data exploration visualizations available. Explore your data to generate visualizations.")
     
-    # Statistical test visualizations
     with visualization_tabs[1]:
         st.subheader("Statistical Test Visualizations")
-        if 'statistical_figures' in st.session_state:
-            display_figures(st.session_state.statistical_figures, "viz_stat")
+        if 'statistical_tests' in st.session_state.report_data:
+            for test_key, test_data in st.session_state.report_data['statistical_tests'].items():
+                if 'results' in test_data and 'figure' in test_data:
+                    col1, col2 = st.columns([3, 1])
+                    with col1:
+                        st.pyplot(test_data['figure'])
+                    with col2:
+                        test_type = test_data.get('type', 'Test')
+                        test_desc = test_data.get('description', test_key)
+                        if st.checkbox(f"Include {test_type}: {test_desc}", key=f"viz_stat_{test_key}"):
+                            if (test_desc, test_data['figure']) not in st.session_state.selected_visualizations:
+                                st.session_state.selected_visualizations.append((test_desc, test_data['figure']))
+                        else:
+                            if (test_desc, test_data['figure']) in st.session_state.selected_visualizations:
+                                st.session_state.selected_visualizations.remove((test_desc, test_data['figure']))
         else:
-            st.info("No statistical test visualizations available.")
+            st.info("No statistical test visualizations available. Run statistical tests to generate visualizations.")
     
-    # Model visualizations
     with visualization_tabs[2]:
         st.subheader("Model Visualizations")
-        if 'model_figures' in st.session_state:
-            display_figures(st.session_state.model_figures, "viz_model")
+        if 'model_evaluation' in st.session_state.report_data or 'model_training' in st.session_state.report_data:
+            model_figures = []
+            
+            # Get figures from model training
+            if 'model_training' in st.session_state.report_data and 'figures' in st.session_state.report_data['model_training']:
+                model_figures.extend(st.session_state.report_data['model_training']['figures'])
+            
+            # Get figures from model evaluation
+            if 'model_evaluation' in st.session_state.report_data and 'figures' in st.session_state.report_data['model_evaluation']:
+                model_figures.extend(st.session_state.report_data['model_evaluation']['figures'])
+            
+            # Display all model figures
+            for i, (title, fig) in enumerate(model_figures):
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    st.pyplot(fig)
+                with col2:
+                    if st.checkbox(f"Include {title}", key=f"viz_model_{i}"):
+                        if (title, fig) not in st.session_state.selected_visualizations:
+                            st.session_state.selected_visualizations.append((title, fig))
+                    else:
+                        if (title, fig) in st.session_state.selected_visualizations:
+                            st.session_state.selected_visualizations.remove((title, fig))
         else:
-            st.info("No model visualizations available.")
+            st.info("No model visualizations available. Train and evaluate models to generate visualizations.")
     
-    # Prediction visualizations
     with visualization_tabs[3]:
         st.subheader("Prediction Visualizations")
         if 'prediction_figures' in st.session_state:
-            display_figures(st.session_state.prediction_figures, "viz_pred")
+            for i, (title, fig) in enumerate(st.session_state.prediction_figures):
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    st.pyplot(fig)
+                with col2:
+                    if st.checkbox(f"Include {title}", key=f"viz_pred_{i}"):
+                        if (title, fig) not in st.session_state.selected_visualizations:
+                            st.session_state.selected_visualizations.append((title, fig))
+                    else:
+                        if (title, fig) in st.session_state.selected_visualizations:
+                            st.session_state.selected_visualizations.remove((title, fig))
         else:
-            st.info("No prediction visualizations available.")
+            st.info("No prediction visualizations available. Make predictions to generate visualizations.")
     
-    # Display summary of selected visualizations
+    # Show selected visualizations
     if st.session_state.selected_visualizations:
-        st.success(f"{len(st.session_state.selected_visualizations)} visualizations selected for the report")
+        st.markdown("### Selected Visualizations")
+        st.write(f"{len(st.session_state.selected_visualizations)} visualizations will be included in the report")
     else:
         st.info("No visualizations selected for the report")
     
@@ -226,6 +243,7 @@ def prepare_report(html_content):
     bytes : HTML content as bytes
     """
     # Add any necessary processing to the HTML content
+    # For example, add proper DOCTYPE, ensure responsive design, etc.
     enhanced_html = f"""
     <!DOCTYPE html>
     <html lang="en">

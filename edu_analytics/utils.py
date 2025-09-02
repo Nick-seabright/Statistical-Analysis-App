@@ -574,21 +574,27 @@ def store_figure(fig, title, category="exploration"):
     category : str
         Category of the figure (exploration, statistical, model, prediction)
     """
-    # Create a deep copy of the figure to avoid modification issues
+    # Make a deep copy of the figure to avoid modification issues
     import copy
-    try:
-        # Copy the figure for storage
-        from copy import deepcopy
-        fig_copy = deepcopy(fig)
-        
-        # Create the session state container if it doesn't exist
-        if f"{category}_figures" not in st.session_state:
-            st.session_state[f"{category}_figures"] = []
-        
-        # Add the figure to the appropriate category
-        st.session_state[f"{category}_figures"].append((title, fig_copy))
-        
-        # Log success
-        print(f"Figure '{title}' stored in {category}_figures. Total: {len(st.session_state[f'{category}_figures'])}")
-    except Exception as e:
-        print(f"Error storing figure: {str(e)}")
+    fig_copy = copy.deepcopy(fig)
+    
+    # Store in the appropriate session state collection
+    if category == "exploration":
+        if "exploration_figures" not in st.session_state:
+            st.session_state.exploration_figures = []
+        st.session_state.exploration_figures.append((title, fig_copy))
+    
+    elif category == "statistical":
+        if "statistical_figures" not in st.session_state:
+            st.session_state.statistical_figures = []
+        st.session_state.statistical_figures.append((title, fig_copy))
+    
+    elif category == "model":
+        if "model_figures" not in st.session_state:
+            st.session_state.model_figures = []
+        st.session_state.model_figures.append((title, fig_copy))
+    
+    elif category == "prediction":
+        if "prediction_figures" not in st.session_state:
+            st.session_state.prediction_figures = []
+        st.session_state.prediction_figures.append((title, fig_copy))
