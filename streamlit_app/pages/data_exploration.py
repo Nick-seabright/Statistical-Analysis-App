@@ -93,7 +93,6 @@ def show_data_exploration():
             corr_matrix = numeric_data.corr()
             sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', fmt='.2f', ax=ax)
             st.pyplot(fig)
-            store_figure(fig, f"Correlation Matrix", "exploration")
             
             # Show top correlated features with target
             if target_column in corr_matrix.columns:
