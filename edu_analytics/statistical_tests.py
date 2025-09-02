@@ -9,6 +9,7 @@ from typing import Tuple, Dict, List, Optional, Union
 import statsmodels.api as sm
 from statsmodels.formula.api import ols
 import logging
+from edu_analytics.utils import store_figure
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +138,7 @@ def visualize_t_test(results: Dict) -> plt.Figure:
     
     plt.tight_layout()
     plt.subplots_adjust(bottom=0.15)
+    store_figure(fig, f"T-Test: {results['feature']} by {results['target']}", "statistical")
     
     return fig
 
@@ -283,6 +285,7 @@ def visualize_chi_square(results: Dict) -> plt.Figure:
     
     plt.tight_layout()
     plt.subplots_adjust(bottom=0.15)
+    store_figure(fig, f"Chi-Squared: {results['feature']} by {results['target']}", "statistical")
     
     return fig
 
@@ -473,6 +476,8 @@ def visualize_anova(results: Dict) -> plt.Figure:
                ha='center')
     plt.tight_layout()
     plt.subplots_adjust(bottom=0.15)
+    store_figure(fig, f"ANOVA: {results['feature']} by {results['target']}", "statistical")
+    
     return fig
 
 def perform_correlation(
@@ -597,6 +602,7 @@ def visualize_correlation(results: Dict) -> plt.Figure:
         plt.figtext(0.5, 0.01, "Significant correlation (p < 0.05)", ha='center', fontsize=12)
     else:
         plt.figtext(0.5, 0.01, "Non-significant correlation (p > 0.05)", ha='center', fontsize=12)
+    store_figure(fig, f"Correlation: {results['feature']} by {results['target']}", "statistical")
     
     return fig
 
@@ -840,6 +846,7 @@ def visualize_correlation_analysis(results: Dict) -> plt.Figure:
     
     # Add more space between plots
     plt.tight_layout(pad=3.0)
+    store_figure(fig, f"Correlation: {results['feature']} by {results['target']}", "statistical")
     return fig
 
 def perform_nonparametric_test(
@@ -1006,5 +1013,6 @@ def visualize_nonparametric_test(results: Dict) -> plt.Figure:
     
     plt.tight_layout()
     plt.subplots_adjust(bottom=0.15)
+    store_figure(fig, f"Non-Parametric Correlation: {results['feature']} by {results['target']}", "statistical")
     
     return fig
