@@ -138,8 +138,6 @@ def init_session_state():
             os.makedirs(default_dir, exist_ok=True)
         except Exception as e:
             st.warning(f"Could not create default save directory: {str(e)}")
-    if 'saved_plots' not in st.session_state:
-        st.session_state.saved_plots = {}
 
 # Main layout function
 def main():

@@ -90,12 +90,6 @@ def show_data_exploration():
             corr_matrix = numeric_data.corr()
             sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', fmt='.2f', ax=ax)
             st.pyplot(fig)
-
-            # Add "Add to Report" button
-            if st.button("Add Correlation Matrix to Report", key="add_corr_matrix"):
-                from edu_analytics.utils import save_plot_to_report
-                plot_key = save_plot_to_report(fig, "Correlation Matrix", "Data Exploration")
-                st.success("Correlation matrix added to report")
             
             # Show top correlated features with target
             if target_column in corr_matrix.columns:
@@ -108,12 +102,6 @@ def show_data_exploration():
                 plt.ylabel('Correlation Coefficient')
                 plt.tight_layout()
                 st.pyplot(fig)
-
-                # Add "Add to Report" button
-                if st.button("Add Target Correlations to Report", key="add_target_corrs"):
-                    from edu_analytics.utils import save_plot_to_report
-                    plot_key = save_plot_to_report(fig, f"Feature Correlations with {target_column}", "Data Exploration")
-                    st.success("Target correlations plot added to report")                
                 
                 # Display top positive and negative correlations
                 col1, col2 = st.columns(2)
@@ -140,12 +128,6 @@ def show_data_exploration():
             sns.histplot(data=data, x=dist_feature, kde=True, ax=ax)
             plt.title(f'Distribution of {dist_feature}')
             st.pyplot(fig)
-
-            # Add "Add to Report" button
-            if st.button("Add Distribution Plot to Report", key=f"add_dist_{dist_feature}"):
-                from edu_analytics.utils import save_plot_to_report
-                plot_key = save_plot_to_report(fig, f"Distribution of {dist_feature}", "Data Exploration")
-                st.success(f"Distribution plot of {dist_feature} added to report")
             
             # Distribution by target if target is categorical and not too many categories
             if target_type == 'categorical' and data[target_column].nunique() <= 5:
@@ -153,12 +135,6 @@ def show_data_exploration():
                 sns.histplot(data=data, x=dist_feature, hue=target_column, kde=True, ax=ax)
                 plt.title(f'Distribution of {dist_feature} by {target_column}')
                 st.pyplot(fig)
-
-                # Add "Add to Report" button
-                if st.button("Add Distribution Plot to Report", key=f"add_dist_{dist_feature}"):
-                    from edu_analytics.utils import save_plot_to_report
-                    plot_key = save_plot_to_report(fig, f"Distribution of {dist_feature}", "Data Exploration")
-                    st.success(f"Distribution plot of {dist_feature} added to report")
         else:
             # Categorical feature - bar chart
             fig, ax = plt.subplots(figsize=(10, 6))
@@ -168,12 +144,6 @@ def show_data_exploration():
             plt.xticks(rotation=45, ha='right')
             plt.tight_layout()
             st.pyplot(fig)
-
-            # Add "Add to Report" button
-            if st.button("Add Distribution Plot to Report", key=f"add_dist_{dist_feature}"):
-                from edu_analytics.utils import save_plot_to_report
-                plot_key = save_plot_to_report(fig, f"Distribution of {dist_feature}", "Data Exploration")
-                st.success(f"Distribution plot of {dist_feature} added to report")            
             
             # Distribution by target if target is categorical
             if target_type == 'categorical' and data[target_column].nunique() <= 5:
@@ -190,12 +160,6 @@ def show_data_exploration():
                 plt.xticks(rotation=45, ha='right')
                 plt.tight_layout()
                 st.pyplot(fig)
-
-                # Add "Add to Report" button
-                if st.button("Add Distribution Plot to Report", key=f"add_dist_{dist_feature}"):
-                    from edu_analytics.utils import save_plot_to_report
-                    plot_key = save_plot_to_report(fig, f"Distribution of {dist_feature}", "Data Exploration")
-                    st.success(f"Distribution plot of {dist_feature} added to report")                
     
     with tab4:
         st.markdown("<div class='subheader'>Feature Analysis</div>", unsafe_allow_html=True)

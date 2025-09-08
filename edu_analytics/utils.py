@@ -560,39 +560,3 @@ def calculate_confidence_interval(
     interval = sem * stats.t.ppf((1 + confidence) / 2, len(data) - 1)
     
     return mean - interval, mean + interval
-
-def save_plot_to_report(fig, plot_name, section):
-    """
-    Save a matplotlib figure to session state for later inclusion in reports
-    
-    Parameters:
-    -----------
-    fig : matplotlib.figure.Figure
-        The figure to save
-    plot_name : str
-        Name to identify the plot
-    section : str
-        Section the plot belongs to (e.g., 'Data Exploration', 'Statistical Analysis')
-    """
-    # Create a unique key for the plot
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    plot_key = f"{section}_{plot_name}_{timestamp}"
-    
-    # Convert figure to base64 image
-    buffer = io.BytesIO()
-    fig.savefig(buffer, format='png', bbox_inches='tight', dpi=300)
-    buffer.seek(0)
-    img_str = base64.b64encode(buffer.read()).decode('utf-8')
-    
-    # Store in session state
-    if 'saved_plots' not in st.session_state:
-        st.session_state.saved_plots = {}
-    
-    st.session_state.saved_plots[plot_key] = {
-        'name': plot_name,
-        'section': section,
-        'image': img_str,
-        'timestamp': timestamp
-    }
-    
-    return plot_key
