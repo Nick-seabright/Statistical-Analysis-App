@@ -244,7 +244,7 @@ def create_sidebar():
         st.markdown("---")
         st.subheader("Resources")
         st.markdown("[GitHub Repository](https://github.com/Nick-seabright/Statistical-Analytics-App)")
-        st.markdown("[Submit Issue](https://github.com/yourusername/statistical-analytics/issues)")
+        st.markdown("[Submit Issue](https://github.com/Nick-seabright/Statistical-Analysis-App/issues)")
 
 # Data upload section
 def data_upload_section():
