@@ -223,51 +223,48 @@ def visualize_chi_square(results: Dict) -> plt.Figure:
     sns.heatmap(results['contingency_table'], annot=True, fmt='d', cmap='YlGnBu', ax=ax1)
     ax1.set_title('Observed Frequencies')
     
-    # Plot 2: Mosaic plot - Fix the data conversion to avoid type mismatch
+    # Plot 2: Mosaic plot
     from statsmodels.graphics.mosaicplot import mosaic
     
-    # Prepare data for mosaic plot - ensure all values are strings
+    # Prepare data for mosaic plot
     ct = results['contingency_table']
+    index = ct.index.tolist()
+    columns = ct.columns.tolist()
+    data = ct.values.tolist()
     
-    try:
-        # Method 1: Convert the contingency table to a properly formatted dataset
-        props = {}
-        # Highlight cells with significant differences
-        for i in range(ct.shape[0]):
-            for j in range(ct.shape[1]):
-                observed = ct.iloc[i, j]
-                expected = results['expected'][i, j]
-                # Check if cell contributes significantly to chi-square
-                if (observed - expected)**2 / expected > 3.84:  # Chi-square critical value for df=1, alpha=0.05
-                    key = (str(ct.index[i]), str(ct.columns[j]))  # Convert to strings
-                    props[key] = {'facecolor': 'salmon'}
-        
-        # Create a DataFrame that's correctly formatted for mosaic
-        mosaic_data = []
-        for i in range(ct.shape[0]):
-            for j in range(ct.shape[1]):
-                # Add entries for each cell in the contingency table
-                # Convert all values to strings to avoid type issues
-                count = int(ct.iloc[i, j])  # Ensure count is an integer
-                for _ in range(count):
-                    mosaic_data.append([str(ct.index[i]), str(ct.columns[j])])
-        
-        # Create mosaic plot if we have data
-        if mosaic_data:
-            mosaic(mosaic_data, ax=ax2, properties=props)
-            ax2.set_title('Mosaic Plot')
-        else:
-            # Fallback if conversion failed
-            ax2.text(0.5, 0.5, "Mosaic plot unavailable - data format issue", 
-                     ha='center', va='center', fontsize=12)
-            ax2.axis('off')
+    # Create a list of tuples containing the category combinations
+    category_combinations = [(i, j) for i in index for j in columns]
     
-    except Exception as e:
-        # Fallback visualization if mosaic plot fails
-        ax2.text(0.5, 0.5, f"Mosaic plot unavailable: {str(e)}", 
+    # Create a list of counts for each category combination
+    counts = [data[index.index(i)][columns.index(j)] for i, j in category_combinations]
+    
+    # Create a list of expected counts for each category combination
+    expected_counts = results['expected'].values.flatten().tolist()
+    
+    # Calculate the chi-square statistic for each category combination
+    chi_square_stats = [(obs - exp)**2 / exp for obs, exp in zip(counts, expected_counts)]
+    
+    # Highlight cells with significant differences
+    props = {}
+    for i, (obs, exp) in enumerate(zip(counts, expected_counts)):
+        if (obs - exp)**2 / exp > 3.84:  # Chi-square critical value for df=1, alpha=0.05
+            props[category_combinations[i]] = {'facecolor': 'salmon'}
+    
+    # Create a DataFrame that's correctly formatted for mosaic
+    mosaic_data = []
+    for i, combination in enumerate(category_combinations):
+        for _ in range(counts[i]):
+            mosaic_data.append(list(combination))
+    
+    # Create mosaic plot if we have data
+    if mosaic_data:
+        mosaic(mosaic_data, ax=ax2, properties=props)
+        ax2.set_title('Mosaic Plot')
+    else:
+        # Fallback if conversion failed
+        ax2.text(0.5, 0.5, "Mosaic plot unavailable - data format issue", 
                  ha='center', va='center', fontsize=12)
         ax2.axis('off')
-        logger.warning(f"Error creating mosaic plot: {str(e)}")
     
     # Add test results as text
     plt.figtext(0.5, 0.01, f"Chi-square: {results['chi2']:.2f}, p-value: {results['p_value']:.4f}", ha='center')

@@ -98,60 +98,6 @@ def show_model_training():
                         st.markdown("### Model Performance")
                         st.dataframe(evaluation_results)
                         
-                        # Show feature importance
-                        if feature_importance is not None:
-                            st.markdown("### Feature Importance")
-                            
-                            # Convert to DataFrame if it's a dictionary
-                            if isinstance(feature_importance, dict):
-                                # Take the first model's feature importance for display
-                                model_name = list(feature_importance.keys())[0]
-                                importance_df = feature_importance[model_name]
-                                st.write(f"Feature importance from {model_name}:")
-                            else:
-                                importance_df = feature_importance
-                            
-                            # Display feature importance
-                            st.dataframe(importance_df)
-                            
-                            # Plot feature importance with error handling for column names
-                            fig, ax = plt.subplots(figsize=(10, 6))
-                            
-                            # Check column names and handle variations
-                            if 'importance' in importance_df.columns and 'feature' in importance_df.columns:
-                                # Standard column names
-                                importance_col = 'importance'
-                                feature_col = 'feature'
-                            elif 'Importance' in importance_df.columns and 'Feature' in importance_df.columns:
-                                # Capitalized column names
-                                importance_col = 'Importance'
-                                feature_col = 'Feature'
-                            elif len(importance_df.columns) >= 2:
-                                # Assume first column is feature name and second is importance
-                                feature_col = importance_df.columns[0]
-                                importance_col = importance_df.columns[1]
-                                st.info(f"Using columns: {feature_col} (feature) and {importance_col} (importance)")
-                            else:
-                                # Not enough columns or unrecognized format
-                                st.warning("Feature importance DataFrame has an unexpected format. Cannot plot.")
-                                feature_col = None
-                                importance_col = None
-                            
-                            # Plot if we have valid columns
-                            if feature_col is not None and importance_col is not None:
-                                try:
-                                    # Sort and plot
-                                    sorted_df = importance_df.sort_values(importance_col, ascending=True).tail(15)
-                                    sorted_df.plot(kind='barh', x=feature_col, y=importance_col, ax=ax)
-                                    plt.title('Feature Importance (Top 15)')
-                                    plt.tight_layout()
-                                    st.pyplot(fig)
-                                    plt.close(fig)  # Close the figure to prevent interference
-                                except Exception as e:
-                                    st.error(f"Error plotting feature importance: {str(e)}")
-                                    st.code(f"DataFrame columns: {importance_df.columns.tolist()}")
-                                    st.code(f"DataFrame sample:\n{importance_df.head().to_string()}")
-                        
                         # Store results in report data
                         st.session_state.report_data['model_training'] = {
                             'models_trained': [name for name, _ in models_to_train],
@@ -214,30 +160,6 @@ def show_model_training():
                         # Show evaluation results
                         st.markdown("### Model Performance")
                         st.dataframe(evaluation_results)
-                        
-                        # Show feature importance
-                        if feature_importance is not None:
-                            st.markdown("### Feature Importance")
-                            
-                            # Convert to DataFrame if it's a dictionary
-                            if isinstance(feature_importance, dict):
-                                # Take the first model's feature importance for display
-                                model_name = list(feature_importance.keys())[0]
-                                importance_df = feature_importance[model_name]
-                                st.write(f"Feature importance from {model_name}:")
-                            else:
-                                importance_df = feature_importance
-                            
-                            # Display feature importance
-                            st.dataframe(importance_df)
-                            
-                            # Plot feature importance
-                            fig, ax = plt.subplots(figsize=(10, 6))
-                            importance_df.sort_values('importance', ascending=True).tail(15).plot(
-                                kind='barh', x='feature', y='importance', ax=ax)
-                            plt.title('Feature Importance (Top 15)')
-                            plt.tight_layout()
-                            st.pyplot(fig)
                         
                         # Store results in report data
                         st.session_state.report_data['model_training'] = {
@@ -1663,30 +1585,47 @@ def show_model_training():
                         else:
                             # For non-tree models, calculate permutation importance
                             st.markdown("### Feature Importance (Permutation Method)")
-                            
                             try:
                                 from sklearn.inspection import permutation_importance
-                                
                                 # Create wrapper for neural network models
                                 if is_neural_network:
+                                    # Modify the wrapper class to include a fit method
                                     class KerasClassifierWrapper:
                                         def __init__(self, model):
                                             self.model = model
-                                            self.classes_ = np.unique(y)
+                                            self.classes_ = np.unique(y_test)
                                         
                                         def predict(self, X):
                                             if len(self.classes_) == 2:
                                                 return (self.model.predict(X) > 0.5).astype('int32').flatten()
                                             else:
                                                 return np.argmax(self.model.predict(X), axis=1)
+                                        
+                                        # Add this method to fix the error
+                                        def fit(self, X, y):
+                                            # Dummy method for compatibility
+                                            return self
                                     
                                     model_for_perm = KerasClassifierWrapper(model)
                                 else:
                                     model_for_perm = model
+                                
+                                # Limit to numeric features if there are many categorical features
+                                numeric_features = X_test.select_dtypes(include=['number']).columns
+                                if len(numeric_features) < len(X_test.columns):
+                                    st.info(f"Calculating permutation importance for {len(numeric_features)} numeric features only (out of {len(X_test.columns)} total features).")
+                                    X_subset = X_test[numeric_features]
+                                else:
+                                    X_subset = X_test
                                     
+                                # Further limit if still too many features
+                                if X_subset.shape[1] > 20:
+                                    st.info("Limiting to top 20 features for permutation importance calculation.")
+                                    X_subset = X_subset.iloc[:, :20]
+                                
                                 # Calculate permutation importance
                                 perm_importance = permutation_importance(
-                                    model_for_perm, X_test, y_test, 
+                                    model_for_perm, X_subset, y_test,
                                     n_repeats=5, random_state=42, n_jobs=-1
                                 )
                                 
@@ -1768,26 +1707,43 @@ def show_model_training():
                         else:
                             # For non-tree models, calculate permutation importance
                             st.markdown("### Feature Importance (Permutation Method)")
-                            
                             try:
                                 from sklearn.inspection import permutation_importance
-                                
                                 # Create wrapper for neural network models
                                 if is_neural_network:
+                                    # Modify the wrapper class to include a fit method
                                     class KerasRegressorWrapper:
                                         def __init__(self, model):
                                             self.model = model
                                         
                                         def predict(self, X):
                                             return self.model.predict(X).flatten()
+                                        
+                                        # Add this method to fix the error
+                                        def fit(self, X, y):
+                                            # Dummy method for compatibility
+                                            return self
                                     
                                     model_for_perm = KerasRegressorWrapper(model)
                                 else:
                                     model_for_perm = model
+                                
+                                # Limit to numeric features if there are many categorical features
+                                numeric_features = X_test.select_dtypes(include=['number']).columns
+                                if len(numeric_features) < len(X_test.columns):
+                                    st.info(f"Calculating permutation importance for {len(numeric_features)} numeric features only (out of {len(X_test.columns)} total features).")
+                                    X_subset = X_test[numeric_features]
+                                else:
+                                    X_subset = X_test
                                     
+                                # Further limit if still too many features
+                                if X_subset.shape[1] > 20:
+                                    st.info("Limiting to top 20 features for permutation importance calculation.")
+                                    X_subset = X_subset.iloc[:, :20]
+                                
                                 # Calculate permutation importance
                                 perm_importance = permutation_importance(
-                                    model_for_perm, X_test, y_test, 
+                                    model_for_perm, X_subset, y_test,
                                     n_repeats=5, random_state=42, n_jobs=-1
                                 )
                                 

@@ -57,6 +57,42 @@ def show_report_generation():
         available_sections,
         default=available_sections
     )
+
+    # After the section selection, add plot selection
+    st.markdown("### Select Plots to Include")
+    
+    if 'saved_plots' in st.session_state and st.session_state.saved_plots:
+        # Group plots by section
+        plots_by_section = {}
+        for plot_key, plot_data in st.session_state.saved_plots.items():
+            section = plot_data['section']
+            if section not in plots_by_section:
+                plots_by_section[section] = []
+            plots_by_section[section].append((plot_key, plot_data))
+        
+        # Display plots grouped by section
+        for section, plots in plots_by_section.items():
+            with st.expander(f"{section} Plots"):
+                for plot_key, plot_data in plots:
+                    col1, col2, col3 = st.columns([3, 1, 1])
+                    with col1:
+                        st.write(f"**{plot_data['name']}**")
+                    with col2:
+                        # Show a thumbnail of the plot
+                        st.image(f"data:image/png;base64,{plot_data['image']}", width=100)
+                    with col3:
+                        # Checkbox to select this plot
+                        include_plot = st.checkbox("Include", key=f"include_{plot_key}", value=True)
+                        if include_plot:
+                            if 'selected_plots' not in st.session_state:
+                                st.session_state.selected_plots = []
+                            if plot_key not in st.session_state.selected_plots:
+                                st.session_state.selected_plots.append(plot_key)
+                        else:
+                            if 'selected_plots' in st.session_state and plot_key in st.session_state.selected_plots:
+                                st.session_state.selected_plots.remove(plot_key)
+    else:
+        st.info("No plots have been saved for the report. Use the 'Add to Report' button when viewing plots in other sections.")
     
     # Report metadata
     st.markdown("### Report Metadata")
@@ -303,6 +339,49 @@ def generate_html_report(title, author, sections, report_data, data=None, target
         
         elif section == "Predictions" and ('predictions' in report_data or 'batch_predictions' in report_data):
             html += generate_predictions_section(report_data)
+    
+    # After adding content for each selected section, add the plots section if any plots are selected
+    if 'selected_plots' in st.session_state and st.session_state.selected_plots:
+        html += f"""
+            <div class="section">
+                <h2>Data Visualizations</h2>
+                <p>This section contains visualizations from the analysis.</p>
+        """
+        
+        # Group selected plots by section
+        plots_by_section = {}
+        for plot_key in st.session_state.selected_plots:
+            if plot_key in st.session_state.saved_plots:
+                plot_data = st.session_state.saved_plots[plot_key]
+                section = plot_data['section']
+                if section not in plots_by_section:
+                    plots_by_section[section] = []
+                plots_by_section[section].append(plot_data)
+        
+        # Add plots by section
+        for section, plots in plots_by_section.items():
+            html += f"""
+                <div class="subsection">
+                    <h3>{section} Visualizations</h3>
+            """
+            
+            for plot_data in plots:
+                html += f"""
+                    <div class="plot-container">
+                        <h4>{plot_data['name']}</h4>
+                        <div class="img-container">
+                            <img src="data:image/png;base64,{plot_data['image']}" alt="{plot_data['name']}" class="chart">
+                        </div>
+                    </div>
+                """
+            
+            html += """
+                </div>
+            """
+        
+        html += """
+            </div>
+        """
     
     # Add footer
     html += f"""
