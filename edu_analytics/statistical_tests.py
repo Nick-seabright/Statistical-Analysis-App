@@ -212,18 +212,14 @@ def visualize_chi_square(chisq_results):
     Visualize the results of the chi-square test using a mosaic plot.
 
     Parameters:
-    chisq_results (dict): The results of the chi-square test, including the contingency table and the test statistic.
+    chisq_results (tuple): The results of the chi-square test, including the contingency table and the test statistic.
 
     Returns:
     fig (matplotlib.figure.Figure): The figure containing the mosaic plot.
     """
 
     # Extract the contingency table from the chi-square results
-    contingency_table = chisq_results.get('contingency_table')
-
-    # Check if contingency_table exists
-    if contingency_table is None:
-        raise ValueError("contingency_table not found in chisq_results")
+    contingency_table = chisq_results[0]
 
     # Check if contingency_table is a pandas DataFrame
     if not isinstance(contingency_table, pd.DataFrame):
