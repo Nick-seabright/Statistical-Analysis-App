@@ -239,7 +239,7 @@ def visualize_chi_square(results: Dict) -> plt.Figure:
     counts = [data[index.index(i)][columns.index(j)] for i, j in category_combinations]
     
     # Create a list of expected counts for each category combination
-    expected_counts = results['expected'].flatten().tolist()
+    expected_counts = results['expected'].values.flatten().tolist()
     
     # Calculate the chi-square statistic for each category combination
     chi_square_stats = [(obs - exp)**2 / exp for obs, exp in zip(counts, expected_counts)]
