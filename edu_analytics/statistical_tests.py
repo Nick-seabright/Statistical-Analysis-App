@@ -249,8 +249,9 @@ def visualize_chi_square(chisq_results):
     ax1.set_yticklabels(contingency_table.index)
 
     # Create the mosaic plot on the second subplot
-    index = list(contingency_table.columns)
-    mosaic(contingency_table, index=index, ax=ax2)
+    mosaic_data = contingency_table.stack().reset_index()
+    mosaic_data.columns = ['Row', 'Column', 'Value']
+    mosaic(mosaic_data, ax=ax2)
 
     # Set the title and labels for the mosaic plot
     ax2.set_title('Mosaic Plot')
