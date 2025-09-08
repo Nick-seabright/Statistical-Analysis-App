@@ -9,7 +9,6 @@ from typing import Tuple, Dict, List, Optional, Union
 import statsmodels.api as sm
 from statsmodels.formula.api import ols
 import logging
-from statsmodels.graphics.mosaicplot import mosaic
 
 logger = logging.getLogger(__name__)
 
@@ -207,57 +206,80 @@ def interpret_cramers_v(v: float) -> str:
     else:
         return "Very strong"
 
-def visualize_chi_square(chisq_results):
+def visualize_chi_square(results: Dict) -> plt.Figure:
     """
-    Visualize the results of the chi-square test using a mosaic plot.
-
+    Create visualization for chi-square test results.
     Parameters:
-    chisq_results (tuple): The results of the chi-square test, including the contingency table and the test statistic.
-
+    -----------
+    results : Dict
+        Dictionary containing chi-square test results
     Returns:
-    fig (matplotlib.figure.Figure): The figure containing the mosaic plot.
+    --------
+    matplotlib Figure
     """
-
-    # Extract the contingency table from the chi-square results
-    contingency_table = chisq_results[0]
-
-    # Check if contingency_table is a pandas DataFrame
-    if not isinstance(contingency_table, pd.DataFrame):
-        raise ValueError("contingency_table must be a pandas DataFrame")
-
-    # Check if contingency_table contains non-numeric columns
-    non_numeric_cols = contingency_table.select_dtypes(include=['object', 'category']).columns
-    if not non_numeric_cols.empty:
-        # Convert categorical columns to numeric using one-hot encoding
-        contingency_table = pd.get_dummies(contingency_table, columns=non_numeric_cols)
-
-    # Create a figure with two subplots
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
-
-    # Plot the contingency table as a heatmap on the first subplot
-    ax1.imshow(contingency_table, cmap='Blues', interpolation='nearest')
-    ax1.set_title('Contingency Table')
-    ax1.set_xlabel('Column')
-    ax1.set_ylabel('Row')
-    ax1.set_xticks(np.arange(contingency_table.shape[1]))
-    ax1.set_yticks(np.arange(contingency_table.shape[0]))
-    ax1.set_xticklabels(contingency_table.columns)
-    ax1.set_yticklabels(contingency_table.index)
-
-    # Create the mosaic plot on the second subplot
-    mosaic_data = contingency_table.stack().reset_index()
-    mosaic_data.columns = ['Row', 'Column', 'Value']
-    mosaic(mosaic_data, ax=ax2)
-
-    # Set the title and labels for the mosaic plot
-    ax2.set_title('Mosaic Plot')
-    ax2.set_xlabel('Column')
-    ax2.set_ylabel('Row')
-
-    # Show the plot
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 7))
+    
+    # Plot 1: Heatmap of observed frequencies
+    sns.heatmap(results['contingency_table'], annot=True, fmt='d', cmap='YlGnBu', ax=ax1)
+    ax1.set_title('Observed Frequencies')
+    
+    # Plot 2: Mosaic plot
+    from statsmodels.graphics.mosaicplot import mosaic
+    
+    # Prepare data for mosaic plot
+    ct = results['contingency_table']
+    index = ct.index.tolist()
+    columns = ct.columns.tolist()
+    data = ct.values.tolist()
+    
+    # Create a list of tuples containing the category combinations
+    category_combinations = [(i, j) for i in index for j in columns]
+    
+    # Create a list of counts for each category combination
+    counts = [data[index.index(i)][columns.index(j)] for i, j in category_combinations]
+    
+    # Create a list of expected counts for each category combination
+    expected_counts = results['expected'].flatten().tolist()
+    
+    # Calculate the chi-square statistic for each category combination
+    chi_square_stats = [(obs - exp)**2 / exp for obs, exp in zip(counts, expected_counts)]
+    
+    # Highlight cells with significant differences
+    props = {}
+    for i, (obs, exp) in enumerate(zip(counts, expected_counts)):
+        if (obs - exp)**2 / exp > 3.84:  # Chi-square critical value for df=1, alpha=0.05
+            props[category_combinations[i]] = {'facecolor': 'salmon'}
+    
+    # Create a DataFrame that's correctly formatted for mosaic
+    mosaic_data = []
+    for i, combination in enumerate(category_combinations):
+        for _ in range(counts[i]):
+            mosaic_data.append(list(combination))
+    
+    # Create mosaic plot if we have data
+    if mosaic_data:
+        # Create a mosaic plot
+        mosaic(mosaic_data, ax=ax2)
+        
+        # Highlight cells with significant differences
+        for i, combination in enumerate(category_combinations):
+            if (counts[i] - expected_counts[i])**2 / expected_counts[i] > 3.84:
+                ax2.text(combination[0], combination[1], '***', ha='center', va='center')
+    else:
+        # Fallback if conversion failed
+        ax2.text(0.5, 0.5, "Mosaic plot unavailable - data format issue", 
+                 ha='center', va='center', fontsize=12)
+        ax2.axis('off')
+    
+    # Add test results as text
+    plt.figtext(0.5, 0.01, f"Chi-square: {results['chi2']:.2f}, p-value: {results['p_value']:.4f}", ha='center')
+    sig_text = "Significant association" if results['significant'] else "No significant association"
+    plt.figtext(0.5, 0.04, f"{sig_text} (α={results['alpha']})", ha='center')
+    plt.figtext(0.5, 0.07, f"Cramer's V: {results['cramers_v']:.3f} ({results['effect_size']} effect size)", ha='center')
+    
     plt.tight_layout()
-    plt.show()
-
+    plt.subplots_adjust(bottom=0.15)
+    
     return fig
 
 def perform_anova(
