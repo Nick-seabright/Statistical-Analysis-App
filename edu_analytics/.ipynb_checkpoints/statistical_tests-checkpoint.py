@@ -258,13 +258,8 @@ def visualize_chi_square(results: Dict) -> plt.Figure:
     
     # Create mosaic plot if we have data
     if mosaic_data:
-        # Create a mosaic plot
-        mosaic(mosaic_data, ax=ax2)
-        
-        # Highlight cells with significant differences
-        for i, combination in enumerate(category_combinations):
-            if (counts[i] - expected_counts[i])**2 / expected_counts[i] > 3.84:
-                ax2.text(combination[0], combination[1], '***', ha='center', va='center')
+        mosaic(mosaic_data, ax=ax2, properties=props)
+        ax2.set_title('Mosaic Plot')
     else:
         # Fallback if conversion failed
         ax2.text(0.5, 0.5, "Mosaic plot unavailable - data format issue", 
