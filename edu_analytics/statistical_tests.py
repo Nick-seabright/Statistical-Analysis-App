@@ -230,38 +230,24 @@ def visualize_chi_square(results: Dict) -> plt.Figure:
     ct = results['contingency_table']
     
     try:
-        # Method 1: Convert the contingency table to a properly formatted dataset
+        # Convert indices and columns to strings
+        ct.index = ct.index.astype(str)
+        ct.columns = ct.columns.astype(str)
+    
+        # Method 1: Highlight cells with significant differences
         props = {}
-        # Highlight cells with significant differences
         for i in range(ct.shape[0]):
             for j in range(ct.shape[1]):
                 observed = ct.iloc[i, j]
                 expected = results['expected'][i, j]
                 # Check if cell contributes significantly to chi-square
                 if (observed - expected)**2 / expected > 3.84:  # Chi-square critical value for df=1, alpha=0.05
-                    key = (str(ct.index[i]), str(ct.columns[j]))  # Convert to strings
+                    key = (str(ct.index[i]), str(ct.columns[j]))  # Ensure keys are strings
                     props[key] = {'facecolor': 'salmon'}
-        
-        # Create a DataFrame that's correctly formatted for mosaic
-        mosaic_data = []
-        for i in range(ct.shape[0]):
-            for j in range(ct.shape[1]):
-                # Add entries for each cell in the contingency table
-                # Convert all values to strings to avoid type issues
-                count = int(ct.iloc[i, j])  # Ensure count is an integer
-                for _ in range(count):
-                    mosaic_data.append([str(ct.index[i]), str(ct.columns[j])])
-        
-        # Create mosaic plot if we have data
-        if mosaic_data:
-            mosaic(mosaic_data, ax=ax2, properties=props)
-            ax2.set_title('Mosaic Plot')
-        else:
-            # Fallback if conversion failed
-            ax2.text(0.5, 0.5, "Mosaic plot unavailable - data format issue", 
-                     ha='center', va='center', fontsize=12)
-            ax2.axis('off')
     
+        # Create mosaic plot
+        mosaic(ct.stack(), ax=ax2, properties=props)
+        ax2.set_title('Mosaic Plot')
     except Exception as e:
         # Fallback visualization if mosaic plot fails
         ax2.text(0.5, 0.5, f"Mosaic plot unavailable: {str(e)}", 
