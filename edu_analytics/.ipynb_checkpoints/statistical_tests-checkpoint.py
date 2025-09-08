@@ -236,17 +236,18 @@ def visualize_chi_square(chisq_results):
         contingency_table = pd.get_dummies(contingency_table, columns=non_numeric_cols)
 
     # Create a figure with two subplots
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 8))
 
     # Plot the contingency table as a heatmap on the first subplot
-    ax1.imshow(contingency_table, cmap='Blues', interpolation='nearest')
+    im = ax1.imshow(contingency_table, cmap='Blues', interpolation='nearest')
     ax1.set_title('Contingency Table')
     ax1.set_xlabel('Column')
     ax1.set_ylabel('Row')
     ax1.set_xticks(np.arange(contingency_table.shape[1]))
     ax1.set_yticks(np.arange(contingency_table.shape[0]))
-    ax1.set_xticklabels(contingency_table.columns)
+    ax1.set_xticklabels(contingency_table.columns, rotation=45, ha='right')
     ax1.set_yticklabels(contingency_table.index)
+    fig.colorbar(im, ax=ax1)
 
     # Create the mosaic plot on the second subplot
     index = list(contingency_table.columns)
@@ -256,6 +257,13 @@ def visualize_chi_square(chisq_results):
     ax2.set_title('Mosaic Plot')
     ax2.set_xlabel('Column')
     ax2.set_ylabel('Row')
+    ax2.tick_params(axis='x', labelrotation=45)
+
+    # Add a legend to the mosaic plot
+    handles = [plt.Rectangle((0, 0), 1, 1, color='blue'), 
+               plt.Rectangle((0, 0), 1, 1, color='white')]
+    labels = ['Observed', 'Expected']
+    ax2.legend(handles, labels, loc='upper right')
 
     # Show the plot
     plt.tight_layout()
