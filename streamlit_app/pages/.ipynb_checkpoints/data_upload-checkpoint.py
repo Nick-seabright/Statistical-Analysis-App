@@ -98,6 +98,7 @@ def show_data_upload():
                         st.session_state.target_mapping = target_mapping
                         st.session_state.scaler = scaler
                         st.session_state.categorical_encoders = categorical_encoders
+                        st.session_state.categorical_mappings = categorical_mappings  # Add this line
                         
                         # Initialize report_data if it doesn't exist
                         if 'report_data' not in st.session_state:
