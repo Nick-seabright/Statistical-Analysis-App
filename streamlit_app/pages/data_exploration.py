@@ -82,66 +82,165 @@ def show_data_exploration():
     
     with tab2:
         st.markdown("<div class='subheader'>Correlation Analysis</div>", unsafe_allow_html=True)
-        
         # Show correlation matrix for numeric features
         numeric_data = data[selected_features + [target_column]].select_dtypes(include=['int64', 'float64'])
         if numeric_data.shape[1] > 1:
-            fig, ax = plt.subplots(figsize=(10, 8))
+            # Check number of features for appropriate sizing
+            num_features = numeric_data.shape[1]
+            
+            # Dynamic figure sizing based on number of features
+            figsize = (max(10, num_features * 0.8), max(8, num_features * 0.7))
+            
+            # Create a more readable correlation heatmap
+            fig, ax = plt.subplots(figsize=figsize)
             corr_matrix = numeric_data.corr()
-            sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', fmt='.2f', ax=ax)
+            
+            # Create the heatmap with adjusted font size and rotation
+            sns.heatmap(
+                corr_matrix, 
+                annot=True, 
+                cmap='coolwarm', 
+                fmt='.2f', 
+                ax=ax,
+                # Adjust font size based on number of features
+                annot_kws={"size": max(7, 12 - 0.3 * num_features)},
+                # Ensure the colorbar is properly sized
+                cbar_kws={"shrink": min(1.0, 0.8 if num_features > 15 else 0.9)}
+            )
+            
+            # Adjust tick labels
+            plt.xticks(
+                rotation=45 if num_features < 20 else 90, 
+                ha='right' if num_features < 20 else 'center',
+                fontsize=max(6, 10 - 0.2 * num_features)
+            )
+            plt.yticks(
+                rotation=0,
+                fontsize=max(6, 10 - 0.2 * num_features)
+            )
+            
+            # Ensure layout is properly adjusted
+            plt.tight_layout()
             st.pyplot(fig)
             
-            # Show top correlated features with target
+            # Show top correlated features with target in a more readable format
             if target_column in corr_matrix.columns:
                 st.markdown("<div class='subheader'>Top Correlations with Target</div>", unsafe_allow_html=True)
+                
+                # Get target correlations and sort
                 target_corrs = corr_matrix[target_column].drop(target_column).sort_values(ascending=False)
                 
-                fig, ax = plt.subplots(figsize=(10, 6))
-                target_corrs.plot(kind='bar', ax=ax)
+                # Create a more readable bar chart
+                fig, ax = plt.subplots(figsize=(10, max(6, len(target_corrs) * 0.4)))
+                
+                # Plot horizontal bars for better label readability
+                target_corrs.plot(kind='barh', ax=ax)
                 plt.title(f'Feature Correlations with {target_column}')
-                plt.ylabel('Correlation Coefficient')
+                plt.ylabel('')  # Remove y-label as it's redundant
+                plt.xlabel('Correlation Coefficient')
+                
+                # Add value labels to the bars
+                for i, v in enumerate(target_corrs):
+                    ax.text(v + (0.01 if v >= 0 else -0.06), i, f"{v:.2f}", 
+                            va='center', fontsize=max(8, 10 - 0.1 * len(target_corrs)))
+                
                 plt.tight_layout()
                 st.pyplot(fig)
                 
-                # Display top positive and negative correlations
+                # Display top positive and negative correlations in a cleaner format
                 col1, col2 = st.columns(2)
                 with col1:
                     st.markdown("**Top Positive Correlations**")
-                    st.dataframe(target_corrs.head(5))
-                
+                    # Format the display of correlations
+                    positive_corrs = target_corrs.head(min(5, len(target_corrs)))
+                    if not positive_corrs.empty:
+                        pos_df = pd.DataFrame({
+                            'Feature': positive_corrs.index,
+                            'Correlation': positive_corrs.values
+                        })
+                        pos_df['Correlation'] = pos_df['Correlation'].round(3)
+                        st.dataframe(pos_df.set_index('Feature'), use_container_width=True)
+                    else:
+                        st.info("No positive correlations found.")
+                        
                 with col2:
                     st.markdown("**Top Negative Correlations**")
-                    st.dataframe(target_corrs.tail(5))
+                    # Format the display of correlations
+                    negative_corrs = target_corrs.tail(min(5, len(target_corrs)))
+                    if not negative_corrs.empty:
+                        neg_df = pd.DataFrame({
+                            'Feature': negative_corrs.index,
+                            'Correlation': negative_corrs.values
+                        })
+                        neg_df['Correlation'] = neg_df['Correlation'].round(3)
+                        st.dataframe(neg_df.set_index('Feature'), use_container_width=True)
+                    else:
+                        st.info("No negative correlations found.")
         else:
             st.info("Not enough numeric features for correlation analysis.")
     
     with tab3:
         st.markdown("<div class='subheader'>Data Distributions</div>", unsafe_allow_html=True)
-        
         # Feature selection for distribution plots
         dist_feature = st.selectbox("Select feature for distribution", selected_features)
-        
         # Plot distribution based on feature type
         if data[dist_feature].dtype in ['int64', 'float64']:
             # Numeric feature - histogram
             fig, ax = plt.subplots(figsize=(10, 6))
             sns.histplot(data=data, x=dist_feature, kde=True, ax=ax)
             plt.title(f'Distribution of {dist_feature}')
+            plt.tight_layout()  # Ensure layout is properly adjusted
             st.pyplot(fig)
             
             # Distribution by target if target is categorical and not too many categories
             if target_type == 'categorical' and data[target_column].nunique() <= 5:
                 fig, ax = plt.subplots(figsize=(10, 6))
-                sns.histplot(data=data, x=dist_feature, hue=target_column, kde=True, ax=ax)
+                # Get original category names if mapping exists
+                if hasattr(st.session_state, 'target_mapping') and st.session_state.target_mapping:
+                    target_mapping = st.session_state.target_mapping
+                    reverse_mapping = {v: k for k, v in target_mapping.items()}
+                    # Create a temporary column with original category names for plotting
+                    data_temp = data.copy()
+                    if target_column in data_temp.columns:
+                        data_temp['target_display'] = data_temp[target_column].map(
+                            lambda x: reverse_mapping.get(x, str(x))
+                        )
+                        hue_column = 'target_display'
+                    else:
+                        hue_column = target_column
+                else:
+                    hue_column = target_column
+                    
+                sns.histplot(data=data_temp if 'data_temp' in locals() else data, 
+                            x=dist_feature, hue=hue_column, kde=True, ax=ax)
                 plt.title(f'Distribution of {dist_feature} by {target_column}')
+                plt.legend(title=target_column)
+                plt.tight_layout()
                 st.pyplot(fig)
         else:
-            # Categorical feature - bar chart
-            fig, ax = plt.subplots(figsize=(10, 6))
-            value_counts = data[dist_feature].value_counts().sort_values(ascending=False).head(15)
-            value_counts.plot(kind='bar', ax=ax)
+            # Categorical feature - bar chart with improved readability
+            # Count the number of categories
+            category_counts = data[dist_feature].value_counts().sort_values(ascending=False)
+            num_categories = len(category_counts)
+            
+            # Adjust figure size based on number of categories
+            fig_height = min(10, max(6, num_categories * 0.4))
+            fig, ax = plt.subplots(figsize=(10, fig_height))
+            
+            # Limit to top 20 categories if there are too many
+            if num_categories > 20:
+                st.info(f"Displaying top 20 out of {num_categories} categories for readability.")
+                category_counts = category_counts.head(20)
+            
+            # Plot horizontal bar chart for better label visibility
+            category_counts.plot(kind='barh', ax=ax)
             plt.title(f'Distribution of {dist_feature}')
-            plt.xticks(rotation=45, ha='right')
+            plt.xlabel('Count')
+            plt.ylabel('')  # Feature name is in the title
+            
+            # Adjust font size based on number of categories
+            plt.yticks(fontsize=max(8, 10 - 0.2 * len(category_counts)))
+            
             plt.tight_layout()
             st.pyplot(fig)
             
@@ -149,15 +248,35 @@ def show_data_exploration():
             if target_type == 'categorical' and data[target_column].nunique() <= 5:
                 # Create cross-tabulation
                 cross_tab = pd.crosstab(
-                    data[dist_feature], 
+                    data[dist_feature],
                     data[target_column],
                     normalize='index'
-                ).head(10)
+                )
                 
-                fig, ax = plt.subplots(figsize=(10, 6))
-                cross_tab.plot(kind='bar', stacked=True, ax=ax)
+                # Limit to top categories for readability
+                if cross_tab.shape[0] > 15:
+                    st.info(f"Displaying top 15 out of {cross_tab.shape[0]} categories for readability.")
+                    cross_tab = cross_tab.head(15)
+                
+                # Adjust figure size based on number of categories
+                fig_height = min(10, max(6, cross_tab.shape[0] * 0.4))
+                fig, ax = plt.subplots(figsize=(10, fig_height))
+                
+                # Use original target names if mapping exists
+                if hasattr(st.session_state, 'target_mapping') and st.session_state.target_mapping:
+                    target_mapping = st.session_state.target_mapping
+                    reverse_mapping = {v: k for k, v in target_mapping.items()}
+                    # Rename columns to original category names
+                    cross_tab.columns = [reverse_mapping.get(col, str(col)) for col in cross_tab.columns]
+                
+                cross_tab.plot(kind='barh', stacked=True, ax=ax)
                 plt.title(f'{target_column} Distribution by {dist_feature}')
-                plt.xticks(rotation=45, ha='right')
+                plt.xlabel('Proportion')
+                plt.ylabel('')  # Feature name is in the title
+                
+                # Adjust font size based on number of categories
+                plt.yticks(fontsize=max(8, 10 - 0.2 * cross_tab.shape[0]))
+                
                 plt.tight_layout()
                 st.pyplot(fig)
     
