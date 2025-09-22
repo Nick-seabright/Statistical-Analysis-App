@@ -670,39 +670,19 @@ def show_statistical_analysis():
             
             # Offer alternative analysis for categorical targets
             st.markdown("### Alternative: Feature Importance Analysis")
+            
             # Get numeric features
             numeric_features = [col for col in selected_features
                               if data[col].dtype in ['int64', 'float64']
                               or st.session_state.data_types.get(col) in ['integer', 'float', 'numeric']]
             
             if numeric_features:
-                # Allow users to select which features to include
-                use_all_numeric = st.checkbox("Use all numeric features", value=True)
-                
-                if use_all_numeric:
-                    features_for_analysis = numeric_features
-                else:
-                    # Let the user select specific numeric features
-                    features_for_analysis = st.multiselect(
-                        "Select numeric features for importance analysis",
-                        options=numeric_features,
-                        default=numeric_features[:min(10, len(numeric_features))]  # Default to first 10 features
-                    )
-                    
-                    # Show warning if no features selected
-                    if not features_for_analysis:
-                        st.warning("Please select at least one feature for importance analysis.")
-                        return
-                
-                # Display the number of selected features
-                st.info(f"Using {len(features_for_analysis)} features for importance analysis.")
-                
                 # Calculate feature importance for categorical target
                 if st.button("Analyze Feature Importance", key="run_importance"):
                     try:
                         with st.spinner("Analyzing feature importance..."):
                             # Prepare data for analysis
-                            X_subset = data[features_for_analysis].copy()  # Use filtered features
+                            X_subset = data[numeric_features].copy()
                             y_subset = data[target_column].copy()
                             
                             # Proper handling of missing values

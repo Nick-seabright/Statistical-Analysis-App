@@ -255,22 +255,7 @@ def show_predictions():
                                     batch_processed[feature] = batch_processed[feature].astype(int)
                             
                             # Extract only the needed features in the right order
-                            # First check if we have a record of which features were used for training
-                            if 'training_features' in st.session_state and selected_model in st.session_state.training_features:
-                                # Use the features that were used during training
-                                model_features = st.session_state.training_features[selected_model]
-                                # Check if all needed features are present
-                                missing_features = [f for f in model_features if f not in batch_df.columns]
-                                if missing_features:
-                                    st.error(f"Missing required features in uploaded data: {', '.join(missing_features)}")
-                                    return
-                                # Use only the features that were used for training
-                                X_batch = batch_processed[model_features]
-                                st.info(f"Using {len(model_features)} features that were used to train this model.")
-                            else:
-                                # Fallback to using all selected features
-                                X_batch = batch_processed[selected_features]
-                                st.info(f"Using all {len(selected_features)} features for prediction (original feature set).")
+                            X_batch = batch_processed[selected_features]
                             
                             # Scale the data
                             if hasattr(st.session_state, 'scaler') and st.session_state.scaler is not None:
