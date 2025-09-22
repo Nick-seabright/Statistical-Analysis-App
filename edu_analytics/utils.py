@@ -632,3 +632,365 @@ def get_original_category_names(
         return [reverse_mapping.get(val, str(val)) for val in encoded_values]
     else:
         return reverse_mapping.get(encoded_values, str(encoded_values))
+
+def calculate_class_weights(y):
+    """
+    Calculate balanced class weights for imbalanced datasets
+    
+    Parameters:
+    -----------
+    y : array-like
+        Target labels
+        
+    Returns:
+    --------
+    Dict : Dictionary of class weights {class_label: weight}
+    """
+    import numpy as np
+    from sklearn.utils.class_weight import compute_class_weight
+    
+    classes = np.unique(y)
+    weights = compute_class_weight('balanced', classes=classes, y=y)
+    class_weights = {c: w for c, w in zip(classes, weights)}
+    
+    return class_weights
+
+
+def detect_class_imbalance(y):
+    """
+    Detect and analyze class imbalance in the target variable
+    
+    Parameters:
+    -----------
+    y : array-like
+        Target variable (categorical)
+        
+    Returns:
+    --------
+    Dict : Dictionary with imbalance metrics
+    """
+    import pandas as pd
+    import numpy as np
+    
+    # Count classes
+    counts = pd.Series(y).value_counts()
+    total = len(y)
+    
+    # Calculate metrics
+    class_ratios = counts / counts.max()
+    min_class = counts.idxmin()
+    max_class = counts.idxmax()
+    imbalance_ratio = counts.min() / counts.max()
+    
+    # Determine imbalance severity
+    if imbalance_ratio < 0.01:
+        severity = "Extreme imbalance"
+        suggested_methods = ["SMOTE", "ADASYN", "Class weights", "Ensemble methods"]
+    elif imbalance_ratio < 0.1:
+        severity = "Strong imbalance"
+        suggested_methods = ["SMOTE", "Class weights", "Ensemble methods"]
+    elif imbalance_ratio < 0.25:
+        severity = "Moderate imbalance"
+        suggested_methods = ["Class weights", "Random oversampling"]
+    else:
+        severity = "Mild or no imbalance"
+        suggested_methods = ["Standard methods"]
+    
+    # Create result dictionary
+    result = {
+        'class_counts': counts.to_dict(),
+        'class_percentages': (counts / total * 100).to_dict(),
+        'imbalance_ratio': imbalance_ratio,
+        'min_class': min_class,
+        'max_class': max_class,
+        'severity': severity,
+        'suggested_methods': suggested_methods,
+        'is_imbalanced': imbalance_ratio < 0.25  # Boolean flag indicating if dataset is imbalanced
+    }
+    
+    return result
+
+
+def optimize_threshold(y_true, y_pred_proba, metric='f1', beta=1.0):
+    """
+    Find the optimal classification threshold for imbalanced data
+    
+    Parameters:
+    -----------
+    y_true : array-like
+        True class labels
+    y_pred_proba : array-like
+        Predicted probabilities for the positive class
+    metric : str
+        Metric to optimize ('f1', 'fbeta', 'geometric_mean', 'balanced_accuracy')
+    beta : float
+        Beta value for F-beta score (only used if metric='fbeta')
+        
+    Returns:
+    --------
+    Dict : Dictionary with optimal threshold and scores
+    """
+    import numpy as np
+    from sklearn.metrics import (
+        f1_score, fbeta_score, recall_score, precision_score, 
+        balanced_accuracy_score, roc_curve
+    )
+    
+    # Create thresholds to evaluate
+    thresholds = np.linspace(0.01, 0.99, 99)
+    
+    # Calculate metrics for each threshold
+    scores = []
+    for threshold in thresholds:
+        y_pred = (y_pred_proba >= threshold).astype(int)
+        
+        # Calculate selected metric
+        if metric == 'f1':
+            score = f1_score(y_true, y_pred)
+        elif metric == 'fbeta':
+            score = fbeta_score(y_true, y_pred, beta=beta)
+        elif metric == 'geometric_mean':
+            sensitivity = recall_score(y_true, y_pred)
+            specificity = recall_score(1 - y_true, 1 - y_pred)
+            score = np.sqrt(sensitivity * specificity)
+        elif metric == 'balanced_accuracy':
+            score = balanced_accuracy_score(y_true, y_pred)
+        else:
+            score = f1_score(y_true, y_pred)  # Default to F1
+            
+        # Calculate additional metrics
+        precision = precision_score(y_true, y_pred, zero_division=0)
+        recall = recall_score(y_true, y_pred)
+        
+        scores.append({
+            'threshold': threshold,
+            'score': score,
+            'precision': precision,
+            'recall': recall
+        })
+    
+    # Find threshold with best score
+    scores_df = pd.DataFrame(scores)
+    best_idx = scores_df['score'].idxmax()
+    optimal = scores_df.loc[best_idx].to_dict()
+    
+    # Also calculate threshold using ROC curve (Youden's J statistic)
+    fpr, tpr, roc_thresholds = roc_curve(y_true, y_pred_proba)
+    j_scores = tpr - fpr
+    j_optimal_idx = np.argmax(j_scores)
+    j_optimal_threshold = roc_thresholds[j_optimal_idx]
+    
+    return {
+        'optimal_threshold': optimal['threshold'],
+        'optimal_score': optimal['score'],
+        'optimal_precision': optimal['precision'],
+        'optimal_recall': optimal['recall'],
+        'roc_optimal_threshold': j_optimal_threshold,
+        'metric': metric,
+        'thresholds': thresholds,
+        'scores': scores_df.to_dict('records')
+    }
+
+
+def create_imbalanced_performance_chart(results, threshold_results=None):
+    """
+    Create a visualization of model performance on imbalanced data
+    
+    Parameters:
+    -----------
+    results : Dict
+        Dictionary of evaluation metrics from evaluate_model()
+    threshold_results : Dict, optional
+        Results from optimize_threshold() function
+        
+    Returns:
+    --------
+    matplotlib Figure
+    """
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    import numpy as np
+    
+    # Create figure
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+    
+    # Plot 1: Per-class metrics
+    ax1 = axes[0]
+    if 'classification_report' in results:
+        report = results['classification_report']
+        
+        # Extract class metrics
+        class_metrics = {}
+        for key, value in report.items():
+            if key not in ['accuracy', 'macro avg', 'weighted avg']:
+                class_metrics[key] = {
+                    'precision': value['precision'],
+                    'recall': value['recall'],
+                    'f1-score': value['f1-score'],
+                    'support': value['support']
+                }
+        
+        # Create dataframe
+        metrics_df = pd.DataFrame(class_metrics).T
+        metrics_df = metrics_df.reset_index().rename(columns={'index': 'class'})
+        metrics_df = pd.melt(metrics_df, id_vars=['class', 'support'], 
+                           var_name='metric', value_name='value')
+        
+        # Create grouped bar chart
+        sns.barplot(x='class', y='value', hue='metric', data=metrics_df, ax=ax1)
+        
+        # Add support as text
+        for i, cls in enumerate(class_metrics.keys()):
+            support = class_metrics[cls]['support']
+            ax1.text(i, 0.05, f"n={support}", ha='center', fontsize=9)
+            
+        ax1.set_title('Per-Class Performance Metrics')
+        ax1.set_ylim(0, 1.0)
+        ax1.set_xlabel('Class')
+        ax1.set_ylabel('Score')
+        
+    # Plot 2: Threshold impact (if available)
+    ax2 = axes[1]
+    if threshold_results is not None:
+        thresholds = threshold_results['thresholds']
+        scores_df = pd.DataFrame(threshold_results['scores'])
+        
+        # Plot metrics vs threshold
+        ax2.plot(scores_df['threshold'], scores_df['precision'], label='Precision')
+        ax2.plot(scores_df['threshold'], scores_df['recall'], label='Recall')
+        ax2.plot(scores_df['threshold'], scores_df['score'], label=f"{threshold_results['metric']} Score")
+        
+        # Add optimal threshold line
+        opt_threshold = threshold_results['optimal_threshold']
+        ax2.axvline(opt_threshold, color='red', linestyle='--', 
+                  label=f'Optimal threshold: {opt_threshold:.2f}')
+        
+        ax2.set_title('Impact of Classification Threshold')
+        ax2.set_xlabel('Threshold')
+        ax2.set_ylabel('Score')
+        ax2.set_xlim(0, 1)
+        ax2.set_ylim(0, 1)
+        ax2.legend()
+    else:
+        # If threshold results not available, show confusion matrix
+        if 'confusion_matrix' in results:
+            cm = results['confusion_matrix']
+            sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax2)
+            ax2.set_title('Confusion Matrix')
+            ax2.set_ylabel('True Label')
+            ax2.set_xlabel('Predicted Label')
+    
+    plt.tight_layout()
+    return fig
+
+
+def sample_imbalanced_data(X, y, method='smote', random_state=42):
+    """
+    Apply resampling techniques to handle imbalanced data
+    
+    Parameters:
+    -----------
+    X : DataFrame or array-like
+        Feature matrix
+    y : Series or array-like
+        Target variable
+    method : str
+        Resampling method ('smote', 'adasyn', 'random_over', 'random_under', 'smoteenn', 'smotetomek')
+    random_state : int
+        Random seed for reproducibility
+        
+    Returns:
+    --------
+    Tuple : (X_resampled, y_resampled)
+    """
+    # Import necessary libraries
+    try:
+        from imblearn.over_sampling import SMOTE, ADASYN, RandomOverSampler
+        from imblearn.under_sampling import RandomUnderSampler
+        from imblearn.combine import SMOTEENN, SMOTETomek
+    except ImportError:
+        raise ImportError("imbalanced-learn package is required. Install it with: pip install imbalanced-learn")
+    
+    # Apply the selected resampling method
+    if method == 'smote':
+        sampler = SMOTE(random_state=random_state)
+    elif method == 'adasyn':
+        sampler = ADASYN(random_state=random_state)
+    elif method == 'random_over':
+        sampler = RandomOverSampler(random_state=random_state)
+    elif method == 'random_under':
+        sampler = RandomUnderSampler(random_state=random_state)
+    elif method == 'smoteenn':
+        sampler = SMOTEENN(random_state=random_state)
+    elif method == 'smotetomek':
+        sampler = SMOTETomek(random_state=random_state)
+    else:
+        raise ValueError(f"Unknown resampling method: {method}")
+    
+    # Perform resampling
+    X_resampled, y_resampled = sampler.fit_resample(X, y)
+    
+    # If X was a DataFrame, convert X_resampled back to DataFrame with same column names
+    if isinstance(X, pd.DataFrame):
+        X_resampled = pd.DataFrame(X_resampled, columns=X.columns)
+    
+    # If y was a Series, convert y_resampled back to Series
+    if isinstance(y, pd.Series):
+        y_resampled = pd.Series(y_resampled, name=y.name)
+    
+    return X_resampled, y_resampled
+
+
+def plot_imbalance_summary(y):
+    """
+    Create a visual summary of class imbalance
+    
+    Parameters:
+    -----------
+    y : array-like
+        Target variable
+        
+    Returns:
+    --------
+    matplotlib Figure
+    """
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    
+    # Get imbalance metrics
+    imbalance_info = detect_class_imbalance(y)
+    
+    # Create figure
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+    
+    # Plot 1: Class distribution
+    counts = pd.Series(imbalance_info['class_counts'])
+    ax1.bar(counts.index.astype(str), counts.values)
+    ax1.set_title('Class Distribution')
+    ax1.set_xlabel('Class')
+    ax1.set_ylabel('Count')
+    
+    # Add count and percentage labels
+    for i, (cls, count) in enumerate(counts.items()):
+        percentage = imbalance_info['class_percentages'][cls]
+        ax1.text(i, count/2, f"{count}\n({percentage:.1f}%)", 
+                ha='center', va='center', fontsize=10)
+    
+    # Plot 2: Imbalance ratio visualization
+    ax2.barh(['Imbalance Ratio'], [imbalance_info['imbalance_ratio']])
+    ax2.axvline(0.25, color='red', linestyle='--', label='Moderate Imbalance (0.25)')
+    ax2.axvline(0.1, color='orange', linestyle='--', label='Strong Imbalance (0.1)')
+    ax2.axvline(0.01, color='darkred', linestyle='--', label='Extreme Imbalance (0.01)')
+    ax2.set_title('Imbalance Severity')
+    ax2.set_xlim(0, 1)
+    ax2.set_xlabel('Imbalance Ratio (min/max)')
+    ax2.legend(loc='upper right')
+    
+    # Add annotations
+    plt.figtext(0.5, 0.01, 
+               f"Severity: {imbalance_info['severity']}\nSuggested methods: {', '.join(imbalance_info['suggested_methods'])}",
+               ha='center', fontsize=12, bbox={"facecolor":"white", "alpha":0.8, "pad":5})
+    
+    plt.tight_layout()
+    plt.subplots_adjust(bottom=0.15)
+    return fig
