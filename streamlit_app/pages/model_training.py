@@ -14,6 +14,7 @@ if parent_dir not in sys.path:
     sys.path.append(parent_dir)
 from edu_analytics.model_training import train_models
 from edu_analytics.model_evaluation import evaluate_model, plot_confusion_matrix, plot_feature_importance
+from streamlit_app.components.feature_selector import feature_selector
 
 def show_model_training():
     # Check if data is loaded
@@ -33,6 +34,38 @@ def show_model_training():
     selected_features = st.session_state.processed_data['selected_features']
     target_type = st.session_state.target_type
     target_mapping = st.session_state.target_mapping if 'target_mapping' in st.session_state else None
+
+    # Feature selection section
+    st.markdown("<div class='subheader'>Feature Selection</div>", unsafe_allow_html=True)
+    st.markdown("<div class='info-text'>Select which features to include in your model.</div>", unsafe_allow_html=True)
+    
+    # Allow selecting all features by default or choosing specific ones
+    all_features = st.checkbox("Use all available features", value=True)
+    
+    if all_features:
+        features_for_training = selected_features
+    else:
+        # Let the user select specific features
+        features_for_training = st.multiselect(
+            "Select features to include in model training",
+            options=selected_features,
+            default=selected_features[:min(10, len(selected_features))]  # Default to first 10 features
+        )
+        
+        # Show warning if no features selected
+        if not features_for_training:
+            st.warning("Please select at least one feature for model training.")
+            return
+    
+    # Display the number of selected features
+    st.info(f"Using {len(features_for_training)} features for model training.")
+    
+    # Use a collapsible section to show the list of selected features
+    with st.expander("View selected features"):
+        st.write(", ".join(features_for_training))
+    
+    # Filter X to only include selected features
+    X_filtered = X[features_for_training]
     
     # Create tabs for model training options
     tab1, tab2, tab3 = st.tabs(["Basic Models", "Advanced Configuration", "Model Evaluation"])
@@ -67,7 +100,7 @@ def show_model_training():
                             return
                         # Train models using our function
                         trained_models, evaluation_results, feature_importance = train_models(
-                            X=X,
+                            X=X_filtered,
                             y=y,
                             models=models_to_train,
                             target_type=target_type,
@@ -140,13 +173,18 @@ def show_model_training():
                             return
                         # Train models using our function
                         trained_models, evaluation_results, feature_importance = train_models(
-                            X=X,
+                            X=X_filtered,
                             y=y,
                             models=models_to_train,
                             target_type=target_type,
                             test_size=test_size,
                             random_state=42
                         )
+                        # Store the features used for training this model
+                        if 'training_features' not in st.session_state:
+                            st.session_state.training_features = {}
+                        st.session_state.training_features[model_name] = features_for_training
+
                         # Store trained models in session state
                         st.session_state.models = trained_models
                         st.session_state.model_evaluation = evaluation_results
@@ -225,7 +263,7 @@ def show_model_training():
                             from sklearn.model_selection import train_test_split
                             # Split data
                             X_train, X_test, y_train, y_test = train_test_split(
-                                X, y, test_size=0.2, random_state=42
+                                X_filtered, y, test_size=0.2, random_state=42
                             )
                             # Create and train model
                             model = RandomForestClassifier(
@@ -297,7 +335,7 @@ def show_model_training():
                             indices = np.argsort(importances)[::-1]
                             # Create DataFrame for importance
                             importance_df = pd.DataFrame({
-                                'feature': [X.columns[i] for i in indices],
+                                'feature': [X_filtered.columns[i] for i in indices],
                                 'importance': [importances[i] for i in indices]
                             })
                             st.markdown("### Feature Importance")
@@ -362,7 +400,7 @@ def show_model_training():
                             from sklearn.model_selection import train_test_split
                             # Split data
                             X_train, X_test, y_train, y_test = train_test_split(
-                                X, y, test_size=0.2, random_state=42
+                                X_filtered, y, test_size=0.2, random_state=42
                             )
                             # Create and train model
                             model = RandomForestRegressor(
@@ -402,7 +440,7 @@ def show_model_training():
                             indices = np.argsort(importances)[::-1]
                             # Create DataFrame for importance
                             importance_df = pd.DataFrame({
-                                'feature': [X.columns[i] for i in indices],
+                                'feature': [X_filtered.columns[i] for i in indices],
                                 'importance': [importances[i] for i in indices]
                             })
                             st.markdown("### Feature Importance")
@@ -472,7 +510,7 @@ def show_model_training():
                             from sklearn.model_selection import train_test_split
                             # Split data
                             X_train, X_test, y_train, y_test = train_test_split(
-                                X, y, test_size=0.2, random_state=42
+                                X_filtered, y, test_size=0.2, random_state=42
                             )
                             # Create and train model
                             model = xgb.XGBClassifier(
@@ -546,7 +584,7 @@ def show_model_training():
                             indices = np.argsort(importances)[::-1]
                             # Create DataFrame for importance
                             importance_df = pd.DataFrame({
-                                'feature': [X.columns[i] for i in indices],
+                                'feature': [X_filtered.columns[i] for i in indices],
                                 'importance': [importances[i] for i in indices]
                             })
                             st.markdown("### Feature Importance")
@@ -614,7 +652,7 @@ def show_model_training():
                             from sklearn.model_selection import train_test_split
                             # Split data
                             X_train, X_test, y_train, y_test = train_test_split(
-                                X, y, test_size=0.2, random_state=42
+                                X_filtered, y, test_size=0.2, random_state=42
                             )
                             # Create and train model
                             model = xgb.XGBRegressor(
@@ -656,7 +694,7 @@ def show_model_training():
                             indices = np.argsort(importances)[::-1]
                             # Create DataFrame for importance
                             importance_df = pd.DataFrame({
-                                'feature': [X.columns[i] for i in indices],
+                                'feature': [X_filtered.columns[i] for i in indices],
                                 'importance': [importances[i] for i in indices]
                             })
                             st.markdown("### Feature Importance")
@@ -739,14 +777,14 @@ def show_model_training():
                             tf.random.set_seed(42)
                             # Split data
                             X_train, X_test, y_train, y_test = train_test_split(
-                                X, y, test_size=0.2, random_state=42
+                                X_filtered, y, test_size=0.2, random_state=42
                             )
                             # Get number of classes
                             n_classes = len(np.unique(y))
                             # Create model
                             model = Sequential()
                             # Input layer
-                            model.add(Dense(layer_sizes[0], activation=activation, input_shape=(X.shape[1],)))
+                            model.add(Dense(layer_sizes[0], activation=activation, input_shape=(X_filtered.shape[1],)))
                             if use_batch_norm:
                                 model.add(BatchNormalization())
                             model.add(Dropout(dropout_rate))
@@ -892,13 +930,13 @@ def show_model_training():
                                     def __init__(self, model):
                                         self.model = model
                                         self.classes_ = np.unique(y)
-                                    def predict(self, X):
+                                    def predict(self, X_filtered):
                                         if len(self.classes_) == 2:
-                                            return (self.model.predict(X) > 0.5).astype('int32').flatten()
+                                            return (self.model.predict(X_filtered) > 0.5).astype('int32').flatten()
                                         else:
-                                            return np.argmax(self.model.predict(X), axis=1)
+                                            return np.argmax(self.model.predict(X_filtered), axis=1)
                                     # Add this method
-                                    def fit(self, X, y):
+                                    def fit(self, X_filtered, y):
                                         # Dummy method for compatibility with sklearn
                                         return self
                                 # Create wrapper
@@ -910,7 +948,7 @@ def show_model_training():
                                 )
                                 # Create DataFrame for importance scores
                                 importance_df = pd.DataFrame({
-                                    'feature': X.columns,
+                                    'feature': X_filtered.columns,
                                     'importance': perm_importance.importances_mean,
                                     'std': perm_importance.importances_std
                                 }).sort_values('importance', ascending=False)
@@ -1001,12 +1039,12 @@ def show_model_training():
                             tf.random.set_seed(42)
                             # Split data
                             X_train, X_test, y_train, y_test = train_test_split(
-                                X, y, test_size=0.2, random_state=42
+                                X_filtered, y, test_size=0.2, random_state=42
                             )
                             # Create model
                             model = Sequential()
                             # Input layer
-                            model.add(Dense(layer_sizes[0], activation=activation, input_shape=(X.shape[1],)))
+                            model.add(Dense(layer_sizes[0], activation=activation, input_shape=(X_filtered.shape[1],)))
                             if use_batch_norm:
                                 model.add(BatchNormalization())
                             model.add(Dropout(dropout_rate))
@@ -1109,10 +1147,10 @@ def show_model_training():
                                 class KerasRegressorWrapper:
                                     def __init__(self, model):
                                         self.model = model
-                                    def predict(self, X):
-                                        return self.model.predict(X).flatten()
+                                    def predict(self, X_filtered):
+                                        return self.model.predict(X_filtered).flatten()
                                     # Add this method
-                                    def fit(self, X, y):
+                                    def fit(self, X_filtered, y):
                                         # Dummy method for compatibility with sklearn
                                         return self
                                 # Create wrapper
@@ -1124,7 +1162,7 @@ def show_model_training():
                                 )
                                 # Create DataFrame for importance scores
                                 importance_df = pd.DataFrame({
-                                    'feature': X.columns,
+                                    'feature': X_filtered.columns,
                                     'importance': perm_importance.importances_mean,
                                     'std': perm_importance.importances_std
                                 }).sort_values('importance', ascending=False)
@@ -1218,7 +1256,7 @@ def show_model_training():
                             from sklearn.model_selection import train_test_split
                             # Split data
                             X_train, X_test, y_train, y_test = train_test_split(
-                                X, y, test_size=0.2, random_state=42
+                                X_filtered, y, test_size=0.2, random_state=42
                             )
                             # Create and train model
                             model = SVC(
@@ -1295,7 +1333,7 @@ def show_model_training():
                                 )
                                 # Create DataFrame for importance scores
                                 importance_df = pd.DataFrame({
-                                    'feature': X.columns,
+                                    'feature': X_filtered.columns,
                                     'importance': perm_importance.importances_mean,
                                     'std': perm_importance.importances_std
                                 }).sort_values('importance', ascending=False)
@@ -1369,7 +1407,7 @@ def show_model_training():
                             from sklearn.model_selection import train_test_split
                             # Split data
                             X_train, X_test, y_train, y_test = train_test_split(
-                                X, y, test_size=0.2, random_state=42
+                                X_filtered, y, test_size=0.2, random_state=42
                             )
                             # Create and train model
                             model = SVR(
@@ -1422,7 +1460,7 @@ def show_model_training():
                                 )
                                 # Create DataFrame for importance scores
                                 importance_df = pd.DataFrame({
-                                    'feature': X.columns,
+                                    'feature': X_filtered.columns,
                                     'importance': perm_importance.importances_mean,
                                     'std': perm_importance.importances_std
                                 }).sort_values('importance', ascending=False)
@@ -1507,7 +1545,7 @@ def show_model_training():
                     model = st.session_state.models[selected_model]
                     # Split data for evaluation
                     from sklearn.model_selection import train_test_split
-                    _, X_test, _, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+                    _, X_test, _, y_test = train_test_split(X_filtered, y, test_size=0.2, random_state=42)
                     # Check if this is a neural network model (TensorFlow/Keras)
                     is_neural_network = 'keras' in str(type(model)).lower()
                     
@@ -1614,7 +1652,7 @@ def show_model_training():
                             importances = model.feature_importances_
                             indices = np.argsort(importances)[::-1]
                             plt.bar(range(len(indices[:15])), importances[indices[:15]])
-                            plt.xticks(range(len(indices[:15])), [X.columns[i] for i in indices[:15]], rotation=90)
+                            plt.xticks(range(len(indices[:15])), [X_filtered.columns[i] for i in indices[:15]], rotation=90)
                             plt.title('Feature Importance')
                             plt.tight_layout()
                             st.pyplot(fig)
@@ -1629,11 +1667,11 @@ def show_model_training():
                                         def __init__(self, model):
                                             self.model = model
                                             self.classes_ = np.unique(y)
-                                        def predict(self, X):
+                                        def predict(self, X_filtered):
                                             if len(self.classes_) == 2:
-                                                return (self.model.predict(X) > 0.5).astype('int32').flatten()
+                                                return (self.model.predict(X_filtered) > 0.5).astype('int32').flatten()
                                             else:
-                                                return np.argmax(self.model.predict(X), axis=1)
+                                                return np.argmax(self.model.predict(X_filtered), axis=1)
                                     model_for_perm = KerasClassifierWrapper(model)
                                 else:
                                     model_for_perm = model
@@ -1644,7 +1682,7 @@ def show_model_training():
                                 )
                                 # Create DataFrame for importance scores
                                 importance_df = pd.DataFrame({
-                                    'feature': X.columns,
+                                    'feature': X_filtered.columns,
                                     'importance': perm_importance.importances_mean,
                                     'std': perm_importance.importances_std
                                 }).sort_values('importance', ascending=False)
@@ -1704,7 +1742,7 @@ def show_model_training():
                             importances = model.feature_importances_
                             indices = np.argsort(importances)[::-1]
                             plt.bar(range(len(indices[:15])), importances[indices[:15]])
-                            plt.xticks(range(len(indices[:15])), [X.columns[i] for i in indices[:15]], rotation=90)
+                            plt.xticks(range(len(indices[:15])), [X_filtered.columns[i] for i in indices[:15]], rotation=90)
                             plt.title('Feature Importance')
                             plt.tight_layout()
                             st.pyplot(fig)
@@ -1718,8 +1756,8 @@ def show_model_training():
                                     class KerasRegressorWrapper:
                                         def __init__(self, model):
                                             self.model = model
-                                        def predict(self, X):
-                                            return self.model.predict(X).flatten()
+                                        def predict(self, X_filtered):
+                                            return self.model.predict(X_filtered).flatten()
                                     model_for_perm = KerasRegressorWrapper(model)
                                 else:
                                     model_for_perm = model
@@ -1730,7 +1768,7 @@ def show_model_training():
                                 )
                                 # Create DataFrame for importance scores
                                 importance_df = pd.DataFrame({
-                                    'feature': X.columns,
+                                    'feature': X_filtered.columns,
                                     'importance': perm_importance.importances_mean,
                                     'std': perm_importance.importances_std
                                 }).sort_values('importance', ascending=False)
