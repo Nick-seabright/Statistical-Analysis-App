@@ -80,7 +80,7 @@ def show_data_upload():
                 with st.spinner("Processing data..."):
                     try:
                         # Process the data
-                        X, y, categorical_encoders, target_type, target_mapping, scaler, original_target = prepare_data(
+                        X, y, categorical_encoders, target_type, target_mapping, scaler, original_target, categorical_mappings = prepare_data(
                             df, target_column, selected_features, data_types
                         )
                         
