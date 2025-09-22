@@ -132,22 +132,21 @@ def show_predictions():
                         # Get probabilities if available
                         if hasattr(model, 'predict_proba'):
                             probabilities = model.predict_proba(input_scaled)[0]
-                            
-                            # Display prediction
-                            st.success(f"Prediction: {prediction_label}")
-                            
                             # Display probabilities
                             st.markdown("### Prediction Probabilities")
-                            
                             prob_data = []
                             for i, prob in enumerate(probabilities):
-                                class_label = interpret_prediction(i, target_type, target_mapping)
+                                # Convert encoded class to original category name
+                                if target_mapping:
+                                    reverse_mapping = {v: k for k, v in target_mapping.items()}
+                                    class_label = reverse_mapping.get(i, str(i))
+                                else:
+                                    class_label = str(i)
                                 
                                 prob_data.append({
-                                    'Class': class_label,
+                                    'Class': class_label,  # Using original category name
                                     'Probability': prob
                                 })
-                            
                             prob_df = pd.DataFrame(prob_data)
                             st.dataframe(prob_df)
                             

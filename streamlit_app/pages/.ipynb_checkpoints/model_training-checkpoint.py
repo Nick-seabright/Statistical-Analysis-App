@@ -8,12 +8,10 @@ import os
 import sys
 from edu_analytics.utils import save_file, get_timestamped_filename
 import pickle
-
 # Add the parent directory to path if running this file directly
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 if parent_dir not in sys.path:
     sys.path.append(parent_dir)
-
 from edu_analytics.model_training import train_models
 from edu_analytics.model_evaluation import evaluate_model, plot_confusion_matrix, plot_feature_importance
 
@@ -22,41 +20,34 @@ def show_model_training():
     if 'data' not in st.session_state or st.session_state.data is None:
         st.warning("Please upload data first.")
         return
-    
     # Check if data is processed
     if 'processed_data' not in st.session_state or st.session_state.processed_data is None:
         st.warning("Please process your data first.")
         return
-    
     st.markdown("<div class='subheader'>Model Training</div>", unsafe_allow_html=True)
     st.markdown("<div class='info-text'>Train machine learning models to predict your target variable.</div>", unsafe_allow_html=True)
-    
     # Get data from session state
     X = st.session_state.processed_data['X']
     y = st.session_state.processed_data['y']
     target_column = st.session_state.processed_data['target_column']
     selected_features = st.session_state.processed_data['selected_features']
     target_type = st.session_state.target_type
+    target_mapping = st.session_state.target_mapping if 'target_mapping' in st.session_state else None
     
     # Create tabs for model training options
     tab1, tab2, tab3 = st.tabs(["Basic Models", "Advanced Configuration", "Model Evaluation"])
-    
     with tab1:
         st.markdown("<div class='subheader'>Train Basic Models</div>", unsafe_allow_html=True)
-        
         # Select models to train
         st.write("Select models to train:")
-        
         # Model selection based on target type
         if target_type == 'categorical':
             train_rf = st.checkbox("Random Forest Classifier", value=True)
             train_svm = st.checkbox("Support Vector Machine", value=False)
             train_xgb = st.checkbox("XGBoost Classifier", value=True)
             train_nn = st.checkbox("Neural Network", value=False)
-            
             # Train test split options
             test_size = st.slider("Test set size", 0.1, 0.5, 0.2, 0.05)
-            
             # Training button
             if st.button("Train Models", key="train_basic"):
                 try:
@@ -71,11 +62,9 @@ def show_model_training():
                             models_to_train.append(('XGBoost', 'xgb'))
                         if train_nn:
                             models_to_train.append(('Neural Network', 'nn'))
-                        
                         if not models_to_train:
                             st.warning("Please select at least one model to train.")
                             return
-                        
                         # Train models using our function
                         trained_models, evaluation_results, feature_importance = train_models(
                             X=X,
@@ -85,23 +74,18 @@ def show_model_training():
                             test_size=test_size,
                             random_state=42
                         )
-                        
                         # Store trained models in session state
                         st.session_state.models = trained_models
                         st.session_state.model_evaluation = evaluation_results
                         st.session_state.feature_importance = feature_importance
-                        
                         # Show success message
                         st.success(f"Successfully trained {len(trained_models)} models!")
-                        
                         # Show evaluation results
                         st.markdown("### Model Performance")
                         st.dataframe(evaluation_results)
-                        
                         # Show feature importance
                         if feature_importance is not None:
                             st.markdown("### Feature Importance")
-                            
                             # Convert to DataFrame if it's a dictionary
                             if isinstance(feature_importance, dict):
                                 # Take the first model's feature importance for display
@@ -110,48 +94,15 @@ def show_model_training():
                                 st.write(f"Feature importance from {model_name}:")
                             else:
                                 importance_df = feature_importance
-                            
                             # Display feature importance
                             st.dataframe(importance_df)
-                            
-                            # Plot feature importance with error handling for column names
+                            # Plot feature importance
                             fig, ax = plt.subplots(figsize=(10, 6))
-                            
-                            # Check column names and handle variations
-                            if 'importance' in importance_df.columns and 'feature' in importance_df.columns:
-                                # Standard column names
-                                importance_col = 'importance'
-                                feature_col = 'feature'
-                            elif 'Importance' in importance_df.columns and 'Feature' in importance_df.columns:
-                                # Capitalized column names
-                                importance_col = 'Importance'
-                                feature_col = 'Feature'
-                            elif len(importance_df.columns) >= 2:
-                                # Assume first column is feature name and second is importance
-                                feature_col = importance_df.columns[0]
-                                importance_col = importance_df.columns[1]
-                                st.info(f"Using columns: {feature_col} (feature) and {importance_col} (importance)")
-                            else:
-                                # Not enough columns or unrecognized format
-                                st.warning("Feature importance DataFrame has an unexpected format. Cannot plot.")
-                                feature_col = None
-                                importance_col = None
-                            
-                            # Plot if we have valid columns
-                            if feature_col is not None and importance_col is not None:
-                                try:
-                                    # Sort and plot
-                                    sorted_df = importance_df.sort_values(importance_col, ascending=True).tail(15)
-                                    sorted_df.plot(kind='barh', x=feature_col, y=importance_col, ax=ax)
-                                    plt.title('Feature Importance (Top 15)')
-                                    plt.tight_layout()
-                                    st.pyplot(fig)
-                                    plt.close(fig)  # Close the figure to prevent interference
-                                except Exception as e:
-                                    st.error(f"Error plotting feature importance: {str(e)}")
-                                    st.code(f"DataFrame columns: {importance_df.columns.tolist()}")
-                                    st.code(f"DataFrame sample:\n{importance_df.head().to_string()}")
-                        
+                            importance_df.sort_values('importance', ascending=True).tail(15).plot(
+                                kind='barh', x='feature', y='importance', ax=ax)
+                            plt.title('Feature Importance')
+                            plt.tight_layout()
+                            st.pyplot(fig)
                         # Store results in report data
                         st.session_state.report_data['model_training'] = {
                             'models_trained': [name for name, _ in models_to_train],
@@ -159,21 +110,17 @@ def show_model_training():
                             'feature_importance': feature_importance,
                             'timestamp': pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
                         }
-                        
                 except Exception as e:
                     st.error(f"Error training models: {str(e)}")
                     import traceback
                     st.code(traceback.format_exc())
-        
         elif target_type in ['numeric', 'time']:
             train_rf = st.checkbox("Random Forest Regressor", value=True)
             train_svr = st.checkbox("Support Vector Regressor", value=False)
             train_xgb = st.checkbox("XGBoost Regressor", value=True)
             train_nn = st.checkbox("Neural Network Regressor", value=False)
-            
             # Train test split options
             test_size = st.slider("Test set size", 0.1, 0.5, 0.2, 0.05)
-            
             # Training button
             if st.button("Train Models", key="train_basic_reg"):
                 try:
@@ -188,11 +135,9 @@ def show_model_training():
                             models_to_train.append(('XGBoost', 'xgb'))
                         if train_nn:
                             models_to_train.append(('Neural Network', 'nn'))
-                        
                         if not models_to_train:
                             st.warning("Please select at least one model to train.")
                             return
-                        
                         # Train models using our function
                         trained_models, evaluation_results, feature_importance = train_models(
                             X=X,
@@ -202,23 +147,18 @@ def show_model_training():
                             test_size=test_size,
                             random_state=42
                         )
-                        
                         # Store trained models in session state
                         st.session_state.models = trained_models
                         st.session_state.model_evaluation = evaluation_results
                         st.session_state.feature_importance = feature_importance
-                        
                         # Show success message
                         st.success(f"Successfully trained {len(trained_models)} models!")
-                        
                         # Show evaluation results
                         st.markdown("### Model Performance")
                         st.dataframe(evaluation_results)
-                        
                         # Show feature importance
                         if feature_importance is not None:
                             st.markdown("### Feature Importance")
-                            
                             # Convert to DataFrame if it's a dictionary
                             if isinstance(feature_importance, dict):
                                 # Take the first model's feature importance for display
@@ -227,18 +167,15 @@ def show_model_training():
                                 st.write(f"Feature importance from {model_name}:")
                             else:
                                 importance_df = feature_importance
-                            
                             # Display feature importance
                             st.dataframe(importance_df)
-                            
                             # Plot feature importance
                             fig, ax = plt.subplots(figsize=(10, 6))
                             importance_df.sort_values('importance', ascending=True).tail(15).plot(
                                 kind='barh', x='feature', y='importance', ax=ax)
-                            plt.title('Feature Importance (Top 15)')
+                            plt.title('Feature Importance')
                             plt.tight_layout()
                             st.pyplot(fig)
-                        
                         # Store results in report data
                         st.session_state.report_data['model_training'] = {
                             'models_trained': [name for name, _ in models_to_train],
@@ -246,21 +183,16 @@ def show_model_training():
                             'feature_importance': feature_importance,
                             'timestamp': pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
                         }
-                        
                 except Exception as e:
                     st.error(f"Error training regression models: {str(e)}")
                     import traceback
                     st.code(traceback.format_exc())
-        
         else:
             st.warning(f"Model training is not supported for target type: {target_type}")
-    
     with tab2:
         st.markdown("<div class='subheader'>Advanced Model Configuration</div>", unsafe_allow_html=True)
-        
         # Create tabs for different model types
         model_tabs = st.tabs(["Random Forest", "XGBoost", "Neural Network", "SVM/SVR"])
-        
         with model_tabs[0]:
             # RANDOM FOREST CONFIGURATION
             st.markdown("### Random Forest Configuration")
@@ -270,7 +202,6 @@ def show_model_training():
                 max_depth = st.slider("Maximum tree depth", 2, 50, 10, 1, key="rf_depth")
                 min_samples_split = st.slider("Minimum samples to split", 2, 20, 2, 1, key="rf_split")
                 class_weight = st.selectbox("Class weights", ["balanced", "balanced_subsample", "None"], key="rf_class_weight")
-                
                 # Advanced options toggle
                 show_advanced = st.checkbox("Show advanced options", key="rf_adv")
                 if show_advanced:
@@ -281,25 +212,21 @@ def show_model_training():
                     min_samples_leaf = 1
                     criterion = "gini"
                     max_features = "sqrt"
-                
                 # Convert "None" string to None
                 if class_weight == "None":
                     class_weight = None
                 if max_features == "None":
                     max_features = None
-                
                 # Training button
                 if st.button("Train Custom Random Forest", key="train_custom_rf"):
                     try:
                         with st.spinner("Training custom Random Forest..."):
                             from sklearn.ensemble import RandomForestClassifier
                             from sklearn.model_selection import train_test_split
-                            
                             # Split data
                             X_train, X_test, y_train, y_test = train_test_split(
                                 X, y, test_size=0.2, random_state=42
                             )
-                            
                             # Create and train model
                             model = RandomForestClassifier(
                                 n_estimators=n_estimators,
@@ -312,23 +239,54 @@ def show_model_training():
                                 random_state=42
                             )
                             model.fit(X_train, y_train)
-                            
                             # Evaluate model
                             from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
                             y_pred = model.predict(X_test)
                             accuracy = accuracy_score(y_test, y_pred)
-                            
                             # Display results
                             st.success(f"Custom Random Forest trained with accuracy: {accuracy:.4f}")
                             st.markdown("### Classification Report")
+                            
+                            # Generate and display classification report
                             report = classification_report(y_test, y_pred, output_dict=True)
+                            
+                            # If we have target mapping, use it to convert encoded class labels to original names
+                            if target_mapping:
+                                # Create reverse mapping (encoded value -> original category)
+                                reverse_mapping = {v: k for k, v in target_mapping.items()}
+                                
+                                # Create a new report with original category names
+                                new_report = {}
+                                for key, val in report.items():
+                                    if key.isdigit() or (isinstance(key, (int, float)) and int(key) == key):
+                                        # This is a class label - convert it
+                                        new_key = reverse_mapping.get(int(key), str(key))
+                                        new_report[new_key] = val
+                                    else:
+                                        # This is a metric like 'accuracy', 'macro avg', etc.
+                                        new_report[key] = val
+                                
+                                report = new_report
+                            
                             report_df = pd.DataFrame(report).transpose()
                             st.dataframe(report_df)
                             
                             # Plot confusion matrix
                             fig, ax = plt.subplots(figsize=(10, 6))
                             cm = confusion_matrix(y_test, y_pred)
-                            sns.heatmap(cm, annot=True, fmt='d', ax=ax)
+                            
+                            # Get class names for the confusion matrix
+                            if target_mapping:
+                                # Create reverse mapping (encoded value -> original category)
+                                reverse_mapping = {v: k for k, v in target_mapping.items()}
+                                class_names = [reverse_mapping.get(i, str(i)) for i in range(len(np.unique(y)))]
+                                
+                                # Plot confusion matrix with original class names
+                                sns.heatmap(cm, annot=True, fmt='d', ax=ax, xticklabels=class_names, yticklabels=class_names)
+                            else:
+                                # Default behavior without mapping
+                                sns.heatmap(cm, annot=True, fmt='d', ax=ax)
+                                
                             plt.title('Confusion Matrix')
                             plt.ylabel('True Label')
                             plt.xlabel('Predicted Label')
@@ -337,7 +295,6 @@ def show_model_training():
                             # Feature importance
                             importances = model.feature_importances_
                             indices = np.argsort(importances)[::-1]
-                            
                             # Create DataFrame for importance
                             importance_df = pd.DataFrame({
                                 'feature': [X.columns[i] for i in indices],
@@ -345,7 +302,6 @@ def show_model_training():
                             })
                             st.markdown("### Feature Importance")
                             st.dataframe(importance_df)
-                            
                             # Plot feature importance
                             fig, ax = plt.subplots(figsize=(10, 6))
                             importance_df.sort_values('importance', ascending=True).tail(15).plot(
@@ -353,13 +309,11 @@ def show_model_training():
                             plt.title('Feature Importance (Top 15)')
                             plt.tight_layout()
                             st.pyplot(fig)
-                            
                             # Store model
                             if 'models' not in st.session_state:
                                 st.session_state.models = {}
                             model_name = "Custom Random Forest"
                             st.session_state.models[model_name] = model
-                            
                             # Store in report data
                             if 'custom_models' not in st.session_state.report_data:
                                 st.session_state.report_data['custom_models'] = {}
@@ -387,7 +341,6 @@ def show_model_training():
                 n_estimators = st.slider("Number of trees", 10, 500, 100, 10, key="rfr_trees")
                 max_depth = st.slider("Maximum tree depth", 2, 50, 10, 1, key="rfr_depth")
                 min_samples_split = st.slider("Minimum samples to split", 2, 20, 2, 1, key="rfr_split")
-                
                 # Advanced options toggle
                 show_advanced = st.checkbox("Show advanced options", key="rfr_adv")
                 if show_advanced:
@@ -398,23 +351,19 @@ def show_model_training():
                     min_samples_leaf = 1
                     criterion = "squared_error"
                     max_features = "sqrt"
-                
                 # Convert "None" string to None
                 if max_features == "None":
                     max_features = None
-                
                 # Training button
                 if st.button("Train Custom Random Forest Regressor", key="train_custom_rfr"):
                     try:
                         with st.spinner("Training custom Random Forest Regressor..."):
                             from sklearn.ensemble import RandomForestRegressor
                             from sklearn.model_selection import train_test_split
-                            
                             # Split data
                             X_train, X_test, y_train, y_test = train_test_split(
                                 X, y, test_size=0.2, random_state=42
                             )
-                            
                             # Create and train model
                             model = RandomForestRegressor(
                                 n_estimators=n_estimators,
@@ -426,7 +375,6 @@ def show_model_training():
                                 random_state=42
                             )
                             model.fit(X_train, y_train)
-                            
                             # Evaluate model
                             from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
                             y_pred = model.predict(X_test)
@@ -434,14 +382,12 @@ def show_model_training():
                             rmse = np.sqrt(mse)
                             mae = mean_absolute_error(y_test, y_pred)
                             r2 = r2_score(y_test, y_pred)
-                            
                             # Display results
                             st.success(f"Custom Random Forest Regressor trained with R² Score: {r2:.4f}")
                             col1, col2, col3 = st.columns(3)
                             col1.metric("MSE", f"{mse:.4f}")
                             col2.metric("RMSE", f"{rmse:.4f}")
                             col3.metric("MAE", f"{mae:.4f}")
-                            
                             # Plot actual vs predicted
                             fig, ax = plt.subplots(figsize=(10, 6))
                             plt.scatter(y_test, y_pred, alpha=0.5)
@@ -451,11 +397,9 @@ def show_model_training():
                             plt.ylabel('Predicted')
                             plt.tight_layout()
                             st.pyplot(fig)
-                            
                             # Feature importance
                             importances = model.feature_importances_
                             indices = np.argsort(importances)[::-1]
-                            
                             # Create DataFrame for importance
                             importance_df = pd.DataFrame({
                                 'feature': [X.columns[i] for i in indices],
@@ -463,7 +407,6 @@ def show_model_training():
                             })
                             st.markdown("### Feature Importance")
                             st.dataframe(importance_df)
-                            
                             # Plot feature importance
                             fig, ax = plt.subplots(figsize=(10, 6))
                             importance_df.sort_values('importance', ascending=True).tail(15).plot(
@@ -471,13 +414,11 @@ def show_model_training():
                             plt.title('Feature Importance (Top 15)')
                             plt.tight_layout()
                             st.pyplot(fig)
-                            
                             # Store model
                             if 'models' not in st.session_state:
                                 st.session_state.models = {}
                             model_name = "Custom Random Forest Regressor"
                             st.session_state.models[model_name] = model
-                            
                             # Store in report data
                             if 'custom_models' not in st.session_state.report_data:
                                 st.session_state.report_data['custom_models'] = {}
@@ -501,7 +442,6 @@ def show_model_training():
                         st.error(f"Error training custom Random Forest Regressor: {str(e)}")
                         import traceback
                         st.code(traceback.format_exc())
-    
         with model_tabs[1]:
             # XGBOOST CONFIGURATION
             st.markdown("### XGBoost Configuration")
@@ -510,7 +450,6 @@ def show_model_training():
                 n_estimators = st.slider("Number of trees", 10, 500, 100, 10, key="xgb_n_est")
                 max_depth = st.slider("Maximum tree depth", 2, 20, 6, 1, key="xgb_depth")
                 learning_rate = st.slider("Learning rate", 0.01, 0.3, 0.1, 0.01, key="xgb_lr")
-                
                 # Advanced options toggle
                 show_advanced = st.checkbox("Show advanced options", key="xgb_adv")
                 if show_advanced:
@@ -525,19 +464,16 @@ def show_model_training():
                     gamma = 0
                     reg_alpha = 0
                     reg_lambda = 1
-                
                 # Training button
                 if st.button("Train Custom XGBoost", key="train_custom_xgb"):
                     try:
                         with st.spinner("Training custom XGBoost Classifier..."):
                             import xgboost as xgb
                             from sklearn.model_selection import train_test_split
-                            
                             # Split data
                             X_train, X_test, y_train, y_test = train_test_split(
                                 X, y, test_size=0.2, random_state=42
                             )
-                            
                             # Create and train model
                             model = xgb.XGBClassifier(
                                 n_estimators=n_estimators,
@@ -551,23 +487,55 @@ def show_model_training():
                                 random_state=42
                             )
                             model.fit(X_train, y_train)
-                            
                             # Evaluate model
                             from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
                             y_pred = model.predict(X_test)
                             accuracy = accuracy_score(y_test, y_pred)
                             
-                            # Display results (continued)
+                            # Display results
                             st.success(f"Custom XGBoost trained with accuracy: {accuracy:.4f}")
                             st.markdown("### Classification Report")
+                            
+                            # Generate and display classification report with original class names
                             report = classification_report(y_test, y_pred, output_dict=True)
+                            
+                            # If we have target mapping, use it to convert encoded class labels to original names
+                            if target_mapping:
+                                # Create reverse mapping (encoded value -> original category)
+                                reverse_mapping = {v: k for k, v in target_mapping.items()}
+                                
+                                # Create a new report with original category names
+                                new_report = {}
+                                for key, val in report.items():
+                                    if key.isdigit() or (isinstance(key, (int, float)) and int(key) == key):
+                                        # This is a class label - convert it
+                                        new_key = reverse_mapping.get(int(key), str(key))
+                                        new_report[new_key] = val
+                                    else:
+                                        # This is a metric like 'accuracy', 'macro avg', etc.
+                                        new_report[key] = val
+                                
+                                report = new_report
+                            
                             report_df = pd.DataFrame(report).transpose()
                             st.dataframe(report_df)
                             
                             # Plot confusion matrix
                             fig, ax = plt.subplots(figsize=(10, 6))
                             cm = confusion_matrix(y_test, y_pred)
-                            sns.heatmap(cm, annot=True, fmt='d', ax=ax)
+                            
+                            # Get class names for the confusion matrix
+                            if target_mapping:
+                                # Create reverse mapping (encoded value -> original category)
+                                reverse_mapping = {v: k for k, v in target_mapping.items()}
+                                class_names = [reverse_mapping.get(i, str(i)) for i in range(len(np.unique(y)))]
+                                
+                                # Plot confusion matrix with original class names
+                                sns.heatmap(cm, annot=True, fmt='d', ax=ax, xticklabels=class_names, yticklabels=class_names)
+                            else:
+                                # Default behavior without mapping
+                                sns.heatmap(cm, annot=True, fmt='d', ax=ax)
+                                
                             plt.title('Confusion Matrix')
                             plt.ylabel('True Label')
                             plt.xlabel('Predicted Label')
@@ -576,7 +544,6 @@ def show_model_training():
                             # Feature importance
                             importances = model.feature_importances_
                             indices = np.argsort(importances)[::-1]
-                            
                             # Create DataFrame for importance
                             importance_df = pd.DataFrame({
                                 'feature': [X.columns[i] for i in indices],
@@ -584,7 +551,6 @@ def show_model_training():
                             })
                             st.markdown("### Feature Importance")
                             st.dataframe(importance_df)
-                            
                             # Plot feature importance
                             fig, ax = plt.subplots(figsize=(10, 6))
                             importance_df.sort_values('importance', ascending=True).tail(15).plot(
@@ -592,13 +558,12 @@ def show_model_training():
                             plt.title('Feature Importance (Top 15)')
                             plt.tight_layout()
                             st.pyplot(fig)
-                            
+
                             # Store model
                             if 'models' not in st.session_state:
                                 st.session_state.models = {}
                             model_name = "Custom XGBoost"
                             st.session_state.models[model_name] = model
-                            
                             # Store in report data
                             if 'custom_models' not in st.session_state.report_data:
                                 st.session_state.report_data['custom_models'] = {}
@@ -627,7 +592,6 @@ def show_model_training():
                 n_estimators = st.slider("Number of trees", 10, 500, 100, 10, key="xgbr_n_est")
                 max_depth = st.slider("Maximum tree depth", 2, 20, 6, 1, key="xgbr_depth")
                 learning_rate = st.slider("Learning rate", 0.01, 0.3, 0.1, 0.01, key="xgbr_lr")
-                
                 # Advanced options toggle
                 show_advanced = st.checkbox("Show advanced options", key="xgbr_adv")
                 if show_advanced:
@@ -642,19 +606,16 @@ def show_model_training():
                     gamma = 0
                     reg_alpha = 0
                     reg_lambda = 1
-                
                 # Training button
                 if st.button("Train Custom XGBoost Regressor", key="train_custom_xgbr"):
                     try:
                         with st.spinner("Training custom XGBoost Regressor..."):
                             import xgboost as xgb
                             from sklearn.model_selection import train_test_split
-                            
                             # Split data
                             X_train, X_test, y_train, y_test = train_test_split(
                                 X, y, test_size=0.2, random_state=42
                             )
-                            
                             # Create and train model
                             model = xgb.XGBRegressor(
                                 n_estimators=n_estimators,
@@ -668,7 +629,6 @@ def show_model_training():
                                 random_state=42
                             )
                             model.fit(X_train, y_train)
-                            
                             # Evaluate model
                             from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
                             y_pred = model.predict(X_test)
@@ -676,14 +636,12 @@ def show_model_training():
                             rmse = np.sqrt(mse)
                             mae = mean_absolute_error(y_test, y_pred)
                             r2 = r2_score(y_test, y_pred)
-                            
                             # Display results
                             st.success(f"Custom XGBoost Regressor trained with R² Score: {r2:.4f}")
                             col1, col2, col3 = st.columns(3)
                             col1.metric("MSE", f"{mse:.4f}")
                             col2.metric("RMSE", f"{rmse:.4f}")
                             col3.metric("MAE", f"{mae:.4f}")
-                            
                             # Plot actual vs predicted
                             fig, ax = plt.subplots(figsize=(10, 6))
                             plt.scatter(y_test, y_pred, alpha=0.5)
@@ -693,11 +651,9 @@ def show_model_training():
                             plt.ylabel('Predicted')
                             plt.tight_layout()
                             st.pyplot(fig)
-                            
                             # Feature importance
                             importances = model.feature_importances_
                             indices = np.argsort(importances)[::-1]
-                            
                             # Create DataFrame for importance
                             importance_df = pd.DataFrame({
                                 'feature': [X.columns[i] for i in indices],
@@ -705,7 +661,6 @@ def show_model_training():
                             })
                             st.markdown("### Feature Importance")
                             st.dataframe(importance_df)
-                            
                             # Plot feature importance
                             fig, ax = plt.subplots(figsize=(10, 6))
                             importance_df.sort_values('importance', ascending=True).tail(15).plot(
@@ -713,13 +668,11 @@ def show_model_training():
                             plt.title('Feature Importance (Top 15)')
                             plt.tight_layout()
                             st.pyplot(fig)
-                            
                             # Store model
                             if 'models' not in st.session_state:
                                 st.session_state.models = {}
                             model_name = "Custom XGBoost Regressor"
                             st.session_state.models[model_name] = model
-                            
                             # Store in report data
                             if 'custom_models' not in st.session_state.report_data:
                                 st.session_state.report_data['custom_models'] = {}
@@ -745,7 +698,6 @@ def show_model_training():
                         st.error(f"Error training custom XGBoost Regressor: {str(e)}")
                         import traceback
                         st.code(traceback.format_exc())
-    
         with model_tabs[2]:
             # NEURAL NETWORK CONFIGURATION
             st.markdown("### Neural Network Configuration")
@@ -759,7 +711,6 @@ def show_model_training():
                 learning_rate = st.slider("Learning rate", 0.0001, 0.01, 0.001, 0.0001, format="%.4f", key="nn_lr")
                 batch_size = st.slider("Batch size", 8, 128, 32, 8, key="nn_batch")
                 epochs = st.slider("Epochs", 10, 200, 50, 10, key="nn_epochs")
-                
                 # Advanced options toggle
                 show_advanced = st.checkbox("Show advanced options", key="nn_adv")
                 if show_advanced:
@@ -774,7 +725,6 @@ def show_model_training():
                     use_batch_norm = True
                     early_stopping = True
                     patience = 10
-                
                 # Training button
                 if st.button("Train Custom Neural Network", key="train_custom_nn"):
                     try:
@@ -785,34 +735,27 @@ def show_model_training():
                             from tensorflow.keras.optimizers import Adam, SGD, RMSprop, Adagrad
                             from tensorflow.keras.callbacks import EarlyStopping
                             from sklearn.model_selection import train_test_split
-                            
                             # Set random seed for reproducibility
                             tf.random.set_seed(42)
-                            
                             # Split data
                             X_train, X_test, y_train, y_test = train_test_split(
                                 X, y, test_size=0.2, random_state=42
                             )
-                            
                             # Get number of classes
                             n_classes = len(np.unique(y))
-                            
                             # Create model
                             model = Sequential()
-                            
                             # Input layer
                             model.add(Dense(layer_sizes[0], activation=activation, input_shape=(X.shape[1],)))
                             if use_batch_norm:
                                 model.add(BatchNormalization())
                             model.add(Dropout(dropout_rate))
-                            
                             # Hidden layers
                             for i in range(1, n_layers):
                                 model.add(Dense(layer_sizes[i], activation=activation))
                                 if use_batch_norm:
                                     model.add(BatchNormalization())
                                 model.add(Dropout(dropout_rate))
-                            
                             # Output layer
                             if n_classes == 2:  # Binary classification
                                 model.add(Dense(1, activation='sigmoid'))
@@ -820,7 +763,6 @@ def show_model_training():
                             else:  # Multi-class classification
                                 model.add(Dense(n_classes, activation='softmax'))
                                 loss = 'sparse_categorical_crossentropy'
-                            
                             # Select optimizer
                             if optimizer == "adam":
                                 opt = Adam(learning_rate=learning_rate)
@@ -830,14 +772,12 @@ def show_model_training():
                                 opt = RMSprop(learning_rate=learning_rate)
                             else:
                                 opt = Adagrad(learning_rate=learning_rate)
-                            
                             # Compile model
                             model.compile(
                                 optimizer=opt,
                                 loss=loss,
                                 metrics=['accuracy']
                             )
-                            
                             # Callbacks
                             callbacks = []
                             if early_stopping:
@@ -847,7 +787,6 @@ def show_model_training():
                                     restore_best_weights=True
                                 )
                                 callbacks.append(es)
-                            
                             # Train model
                             history = model.fit(
                                 X_train, y_train,
@@ -857,23 +796,42 @@ def show_model_training():
                                 callbacks=callbacks,
                                 verbose=0
                             )
-                            
                             # Evaluate model
                             _, accuracy = model.evaluate(X_test, y_test, verbose=0)
+                            
+                            # Generate predictions
                             if n_classes == 2:
                                 y_pred = (model.predict(X_test) > 0.5).astype('int32').flatten()
                             else:
                                 y_pred = np.argmax(model.predict(X_test), axis=1)
                                 
+                            # Create classification report
                             from sklearn.metrics import classification_report, confusion_matrix
                             report = classification_report(y_test, y_pred, output_dict=True)
+                            
+                            # Convert class labels to original categories if mapping exists
+                            if target_mapping:
+                                # Create reverse mapping (encoded value -> original category)
+                                reverse_mapping = {v: k for k, v in target_mapping.items()}
+                                
+                                # Create a new report with original category names
+                                new_report = {}
+                                for key, val in report.items():
+                                    if key.isdigit() or (isinstance(key, (int, float)) and int(key) == key):
+                                        # This is a class label - convert it
+                                        new_key = reverse_mapping.get(int(key), str(key))
+                                        new_report[new_key] = val
+                                    else:
+                                        # This is a metric like 'accuracy', 'macro avg', etc.
+                                        new_report[key] = val
+                                
+                                report = new_report
                             
                             # Display results
                             st.success(f"Custom Neural Network trained with accuracy: {accuracy:.4f}")
                             
                             # Plot training history
                             fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 5))
-                            
                             # Loss plot
                             ax1.plot(history.history['loss'], label='Training Loss')
                             ax1.plot(history.history['val_loss'], label='Validation Loss')
@@ -881,7 +839,6 @@ def show_model_training():
                             ax1.set_ylabel('Loss')
                             ax1.set_xlabel('Epoch')
                             ax1.legend()
-                            
                             # Accuracy plot
                             ax2.plot(history.history['accuracy'], label='Training Accuracy')
                             ax2.plot(history.history['val_accuracy'], label='Validation Accuracy')
@@ -889,7 +846,6 @@ def show_model_training():
                             ax2.set_ylabel('Accuracy')
                             ax2.set_xlabel('Epoch')
                             ax2.legend()
-                            
                             plt.tight_layout()
                             st.pyplot(fig)
                             
@@ -901,7 +857,19 @@ def show_model_training():
                             # Plot confusion matrix
                             fig, ax = plt.subplots(figsize=(10, 6))
                             cm = confusion_matrix(y_test, y_pred)
-                            sns.heatmap(cm, annot=True, fmt='d', ax=ax)
+                            
+                            # Get class names for the confusion matrix
+                            if target_mapping:
+                                # Create reverse mapping (encoded value -> original category)
+                                reverse_mapping = {v: k for k, v in target_mapping.items()}
+                                class_names = [reverse_mapping.get(i, str(i)) for i in range(len(np.unique(y)))]
+                                
+                                # Plot confusion matrix with original class names
+                                sns.heatmap(cm, annot=True, fmt='d', ax=ax, xticklabels=class_names, yticklabels=class_names)
+                            else:
+                                # Default behavior without mapping
+                                sns.heatmap(cm, annot=True, fmt='d', ax=ax)
+                                
                             plt.title('Confusion Matrix')
                             plt.ylabel('True Label')
                             plt.xlabel('Predicted Label')
@@ -916,43 +884,39 @@ def show_model_training():
                             else:
                                 X_sample = X_test
                                 y_sample = y_test
-                                
                             try:
                                 # Use a wrapper to make the keras model compatible with sklearn
                                 from sklearn.inspection import permutation_importance
-                                
                                 # Create a wrapper for Keras model to use with permutation importance
                                 class KerasClassifierWrapper:
                                     def __init__(self, model):
                                         self.model = model
-                                        self.classes_ = np.unique(y_train)
-                                    
+                                        self.classes_ = np.unique(y)
                                     def predict(self, X):
                                         if len(self.classes_) == 2:
                                             return (self.model.predict(X) > 0.5).astype('int32').flatten()
                                         else:
                                             return np.argmax(self.model.predict(X), axis=1)
-                                
+                                    # Add this method
+                                    def fit(self, X, y):
+                                        # Dummy method for compatibility with sklearn
+                                        return self
                                 # Create wrapper
                                 wrapper_model = KerasClassifierWrapper(model)
-                                
                                 # Calculate permutation importance
                                 perm_importance = permutation_importance(
-                                    wrapper_model, X_sample, y_sample, 
+                                    wrapper_model, X_sample, y_sample,
                                     n_repeats=5, random_state=42, n_jobs=-1
                                 )
-                                
                                 # Create DataFrame for importance scores
                                 importance_df = pd.DataFrame({
                                     'feature': X.columns,
                                     'importance': perm_importance.importances_mean,
                                     'std': perm_importance.importances_std
                                 }).sort_values('importance', ascending=False)
-                                
                                 # Display feature importance
                                 st.markdown("### Feature Importance (Permutation Method)")
                                 st.dataframe(importance_df)
-                                
                                 # Plot feature importance
                                 fig, ax = plt.subplots(figsize=(10, 6))
                                 importance_df.head(15).sort_values('importance', ascending=True).plot(
@@ -964,13 +928,11 @@ def show_model_training():
                                 st.info(f"Could not calculate permutation importance: {str(e)}")
                                 st.info("This is normal for large datasets or complex models.")
                                 importance_df = pd.DataFrame(columns=['feature', 'importance', 'std'])
-                            
                             # Store model
                             if 'models' not in st.session_state:
                                 st.session_state.models = {}
                             model_name = "Custom Neural Network"
                             st.session_state.models[model_name] = model
-                            
                             # Store in report data
                             if 'custom_models' not in st.session_state.report_data:
                                 st.session_state.report_data['custom_models'] = {}
@@ -1011,7 +973,6 @@ def show_model_training():
                 learning_rate = st.slider("Learning rate", 0.0001, 0.01, 0.001, 0.0001, format="%.4f", key="nnr_lr")
                 batch_size = st.slider("Batch size", 8, 128, 32, 8, key="nnr_batch")
                 epochs = st.slider("Epochs", 10, 200, 50, 10, key="nnr_epochs")
-                
                 # Advanced options toggle
                 show_advanced = st.checkbox("Show advanced options", key="nnr_adv")
                 if show_advanced:
@@ -1026,7 +987,6 @@ def show_model_training():
                     use_batch_norm = True
                     early_stopping = True
                     patience = 10
-                
                 # Training button
                 if st.button("Train Custom Neural Network Regressor", key="train_custom_nnr"):
                     try:
@@ -1037,34 +997,27 @@ def show_model_training():
                             from tensorflow.keras.optimizers import Adam, SGD, RMSprop, Adagrad
                             from tensorflow.keras.callbacks import EarlyStopping
                             from sklearn.model_selection import train_test_split
-                            
                             # Set random seed for reproducibility
                             tf.random.set_seed(42)
-                            
                             # Split data
                             X_train, X_test, y_train, y_test = train_test_split(
                                 X, y, test_size=0.2, random_state=42
                             )
-                            
                             # Create model
                             model = Sequential()
-                            
                             # Input layer
                             model.add(Dense(layer_sizes[0], activation=activation, input_shape=(X.shape[1],)))
                             if use_batch_norm:
                                 model.add(BatchNormalization())
                             model.add(Dropout(dropout_rate))
-                            
                             # Hidden layers
                             for i in range(1, n_layers):
                                 model.add(Dense(layer_sizes[i], activation=activation))
                                 if use_batch_norm:
                                     model.add(BatchNormalization())
                                 model.add(Dropout(dropout_rate))
-                            
                             # Output layer for regression
                             model.add(Dense(1))
-                            
                             # Select optimizer
                             if optimizer == "adam":
                                 opt = Adam(learning_rate=learning_rate)
@@ -1074,14 +1027,12 @@ def show_model_training():
                                 opt = RMSprop(learning_rate=learning_rate)
                             else:
                                 opt = Adagrad(learning_rate=learning_rate)
-                            
                             # Compile model
                             model.compile(
                                 optimizer=opt,
                                 loss='mse',
                                 metrics=['mae']
                             )
-                            
                             # Callbacks
                             callbacks = []
                             if early_stopping:
@@ -1091,7 +1042,6 @@ def show_model_training():
                                     restore_best_weights=True
                                 )
                                 callbacks.append(es)
-                            
                             # Train model
                             history = model.fit(
                                 X_train, y_train,
@@ -1101,7 +1051,6 @@ def show_model_training():
                                 callbacks=callbacks,
                                 verbose=0
                             )
-                            
                             # Evaluate model
                             y_pred = model.predict(X_test).flatten()
                             from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
@@ -1109,17 +1058,14 @@ def show_model_training():
                             rmse = np.sqrt(mse)
                             mae = mean_absolute_error(y_test, y_pred)
                             r2 = r2_score(y_test, y_pred)
-                            
                             # Display results
                             st.success(f"Custom Neural Network Regressor trained with R² Score: {r2:.4f}")
                             col1, col2, col3 = st.columns(3)
                             col1.metric("MSE", f"{mse:.4f}")
                             col2.metric("RMSE", f"{rmse:.4f}")
                             col3.metric("MAE", f"{mae:.4f}")
-                            
                             # Plot training history
                             fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 5))
-                            
                             # Loss plot
                             ax1.plot(history.history['loss'], label='Training Loss')
                             ax1.plot(history.history['val_loss'], label='Validation Loss')
@@ -1127,7 +1073,6 @@ def show_model_training():
                             ax1.set_ylabel('Loss')
                             ax1.set_xlabel('Epoch')
                             ax1.legend()
-                            
                             # MAE plot
                             ax2.plot(history.history['mae'], label='Training MAE')
                             ax2.plot(history.history['val_mae'], label='Validation MAE')
@@ -1135,10 +1080,8 @@ def show_model_training():
                             ax2.set_ylabel('MAE')
                             ax2.set_xlabel('Epoch')
                             ax2.legend()
-                            
                             plt.tight_layout()
                             st.pyplot(fig)
-                            
                             # Plot actual vs predicted
                             fig, ax = plt.subplots(figsize=(10, 6))
                             plt.scatter(y_test, y_pred, alpha=0.5)
@@ -1148,7 +1091,6 @@ def show_model_training():
                             plt.ylabel('Predicted')
                             plt.tight_layout()
                             st.pyplot(fig)
-                            
                             # Error distribution
                             fig, ax = plt.subplots(figsize=(10, 6))
                             errors = y_test - y_pred
@@ -1159,40 +1101,36 @@ def show_model_training():
                             plt.axvline(x=0, color='r', linestyle='--')
                             plt.tight_layout()
                             st.pyplot(fig)
-                            
                             # Calculate permutation importance
                             try:
                                 # Use a wrapper to make the keras model compatible with sklearn
                                 from sklearn.inspection import permutation_importance
-                                
                                 # Create a wrapper for Keras model to use with permutation importance
                                 class KerasRegressorWrapper:
                                     def __init__(self, model):
                                         self.model = model
-                                    
                                     def predict(self, X):
                                         return self.model.predict(X).flatten()
-                                
+                                    # Add this method
+                                    def fit(self, X, y):
+                                        # Dummy method for compatibility with sklearn
+                                        return self
                                 # Create wrapper
                                 wrapper_model = KerasRegressorWrapper(model)
-                                
                                 # Calculate permutation importance
                                 perm_importance = permutation_importance(
-                                    wrapper_model, X_test, y_test, 
+                                    wrapper_model, X_test, y_test,
                                     n_repeats=5, random_state=42, n_jobs=-1
                                 )
-                                
                                 # Create DataFrame for importance scores
                                 importance_df = pd.DataFrame({
                                     'feature': X.columns,
                                     'importance': perm_importance.importances_mean,
                                     'std': perm_importance.importances_std
                                 }).sort_values('importance', ascending=False)
-                                
                                 # Display feature importance
                                 st.markdown("### Feature Importance (Permutation Method)")
                                 st.dataframe(importance_df)
-                                
                                 # Plot feature importance
                                 fig, ax = plt.subplots(figsize=(10, 6))
                                 importance_df.head(15).sort_values('importance', ascending=True).plot(
@@ -1204,13 +1142,11 @@ def show_model_training():
                                 st.info(f"Could not calculate permutation importance: {str(e)}")
                                 st.info("This is normal for large datasets or complex models.")
                                 importance_df = pd.DataFrame(columns=['feature', 'importance', 'std'])
-                            
                             # Store model
                             if 'models' not in st.session_state:
                                 st.session_state.models = {}
                             model_name = "Custom Neural Network Regressor"
                             st.session_state.models[model_name] = model
-                            
                             # Store in report data
                             if 'custom_models' not in st.session_state.report_data:
                                 st.session_state.report_data['custom_models'] = {}
@@ -1243,7 +1179,6 @@ def show_model_training():
                         st.error(f"Error training custom Neural Network Regressor: {str(e)}")
                         import traceback
                         st.code(traceback.format_exc())
-    
         with model_tabs[3]:
             # SVM/SVR CONFIGURATION
             st.markdown("### SVM Configuration")
@@ -1251,7 +1186,6 @@ def show_model_training():
                 # SVM params
                 C = st.slider("Regularization parameter (C)", 0.1, 10.0, 1.0, 0.1, key="svm_c")
                 kernel = st.selectbox("Kernel", ["rbf", "linear", "poly", "sigmoid"], key="svm_kernel")
-                
                 # Advanced options toggle
                 show_advanced = st.checkbox("Show advanced options", key="svm_adv")
                 if show_advanced:
@@ -1262,12 +1196,10 @@ def show_model_training():
                             gamma = gamma_value
                     else:
                         gamma = "scale"
-                    
                     if kernel == "poly":
                         degree = st.slider("Polynomial degree", 2, 10, 3, 1, key="svm_degree")
                     else:
                         degree = 3
-                    
                     class_weight = st.selectbox("Class weights", ["balanced", "None"], key="svm_class_weight")
                     probability = st.checkbox("Enable probability estimates", value=True, key="svm_prob")
                 else:
@@ -1275,23 +1207,19 @@ def show_model_training():
                     degree = 3
                     class_weight = "balanced"
                     probability = True
-                
                 # Convert "None" string to None
                 if class_weight == "None":
                     class_weight = None
-                
                 # Training button
                 if st.button("Train Custom SVM", key="train_custom_svm"):
                     try:
                         with st.spinner("Training custom SVM..."):
                             from sklearn.svm import SVC
                             from sklearn.model_selection import train_test_split
-                            
                             # Split data
                             X_train, X_test, y_train, y_test = train_test_split(
                                 X, y, test_size=0.2, random_state=42
                             )
-                            
                             # Create and train model
                             model = SVC(
                                 C=C,
@@ -1303,7 +1231,6 @@ def show_model_training():
                                 random_state=42
                             )
                             model.fit(X_train, y_train)
-                            
                             # Evaluate model
                             from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
                             y_pred = model.predict(X_test)
@@ -1312,14 +1239,47 @@ def show_model_training():
                             # Display results
                             st.success(f"Custom SVM trained with accuracy: {accuracy:.4f}")
                             st.markdown("### Classification Report")
+                            
+                            # Generate and display classification report
                             report = classification_report(y_test, y_pred, output_dict=True)
+                            
+                            # If we have target mapping, use it to convert encoded class labels to original names
+                            if target_mapping:
+                                # Create reverse mapping (encoded value -> original category)
+                                reverse_mapping = {v: k for k, v in target_mapping.items()}
+                                
+                                # Create a new report with original category names
+                                new_report = {}
+                                for key, val in report.items():
+                                    if key.isdigit() or (isinstance(key, (int, float)) and int(key) == key):
+                                        # This is a class label - convert it
+                                        new_key = reverse_mapping.get(int(key), str(key))
+                                        new_report[new_key] = val
+                                    else:
+                                        # This is a metric like 'accuracy', 'macro avg', etc.
+                                        new_report[key] = val
+                                
+                                report = new_report
+                            
                             report_df = pd.DataFrame(report).transpose()
                             st.dataframe(report_df)
                             
                             # Plot confusion matrix
                             fig, ax = plt.subplots(figsize=(10, 6))
                             cm = confusion_matrix(y_test, y_pred)
-                            sns.heatmap(cm, annot=True, fmt='d', ax=ax)
+                            
+                            # Get class names for the confusion matrix
+                            if target_mapping:
+                                # Create reverse mapping (encoded value -> original category)
+                                reverse_mapping = {v: k for k, v in target_mapping.items()}
+                                class_names = [reverse_mapping.get(i, str(i)) for i in range(len(np.unique(y)))]
+                                
+                                # Plot confusion matrix with original class names
+                                sns.heatmap(cm, annot=True, fmt='d', ax=ax, xticklabels=class_names, yticklabels=class_names)
+                            else:
+                                # Default behavior without mapping
+                                sns.heatmap(cm, annot=True, fmt='d', ax=ax)
+                                
                             plt.title('Confusion Matrix')
                             plt.ylabel('True Label')
                             plt.xlabel('Predicted Label')
@@ -1328,24 +1288,20 @@ def show_model_training():
                             # Calculate permutation importance
                             try:
                                 from sklearn.inspection import permutation_importance
-                                
                                 # Calculate permutation importance
                                 perm_importance = permutation_importance(
-                                    model, X_test, y_test, 
+                                    model, X_test, y_test,
                                     n_repeats=5, random_state=42, n_jobs=-1
                                 )
-                                
                                 # Create DataFrame for importance scores
                                 importance_df = pd.DataFrame({
                                     'feature': X.columns,
                                     'importance': perm_importance.importances_mean,
                                     'std': perm_importance.importances_std
                                 }).sort_values('importance', ascending=False)
-                                
                                 # Display feature importance
                                 st.markdown("### Feature Importance (Permutation Method)")
                                 st.dataframe(importance_df)
-                                
                                 # Plot feature importance
                                 fig, ax = plt.subplots(figsize=(10, 6))
                                 importance_df.head(15).sort_values('importance', ascending=True).plot(
@@ -1356,13 +1312,12 @@ def show_model_training():
                             except Exception as e:
                                 st.info(f"Could not calculate permutation importance: {str(e)}")
                                 importance_df = pd.DataFrame(columns=['feature', 'importance', 'std'])
-                            
+
                             # Store model
                             if 'models' not in st.session_state:
                                 st.session_state.models = {}
                             model_name = "Custom SVM"
                             st.session_state.models[model_name] = model
-                            
                             # Store in report data
                             if 'custom_models' not in st.session_state.report_data:
                                 st.session_state.report_data['custom_models'] = {}
@@ -1389,7 +1344,6 @@ def show_model_training():
                 C = st.slider("Regularization parameter (C)", 0.1, 10.0, 1.0, 0.1, key="svr_c")
                 kernel = st.selectbox("Kernel", ["rbf", "linear", "poly", "sigmoid"], key="svr_kernel")
                 epsilon = st.slider("Epsilon in the epsilon-SVR model", 0.01, 1.0, 0.1, 0.01, key="svr_epsilon")
-                
                 # Advanced options toggle
                 show_advanced = st.checkbox("Show advanced options", key="svr_adv")
                 if show_advanced:
@@ -1400,7 +1354,6 @@ def show_model_training():
                             gamma = gamma_value
                     else:
                         gamma = "scale"
-                    
                     if kernel == "poly":
                         degree = st.slider("Polynomial degree", 2, 10, 3, 1, key="svr_degree")
                     else:
@@ -1408,19 +1361,16 @@ def show_model_training():
                 else:
                     gamma = "scale"
                     degree = 3
-                
                 # Training button
                 if st.button("Train Custom SVR", key="train_custom_svr"):
                     try:
                         with st.spinner("Training custom SVR..."):
                             from sklearn.svm import SVR
                             from sklearn.model_selection import train_test_split
-                            
                             # Split data
                             X_train, X_test, y_train, y_test = train_test_split(
                                 X, y, test_size=0.2, random_state=42
                             )
-                            
                             # Create and train model
                             model = SVR(
                                 C=C,
@@ -1430,7 +1380,6 @@ def show_model_training():
                                 epsilon=epsilon
                             )
                             model.fit(X_train, y_train)
-                            
                             # Evaluate model
                             from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
                             y_pred = model.predict(X_test)
@@ -1438,14 +1387,12 @@ def show_model_training():
                             rmse = np.sqrt(mse)
                             mae = mean_absolute_error(y_test, y_pred)
                             r2 = r2_score(y_test, y_pred)
-                            
                             # Display results
                             st.success(f"Custom SVR trained with R² Score: {r2:.4f}")
                             col1, col2, col3 = st.columns(3)
                             col1.metric("MSE", f"{mse:.4f}")
                             col2.metric("RMSE", f"{rmse:.4f}")
                             col3.metric("MAE", f"{mae:.4f}")
-                            
                             # Plot actual vs predicted
                             fig, ax = plt.subplots(figsize=(10, 6))
                             plt.scatter(y_test, y_pred, alpha=0.5)
@@ -1455,7 +1402,6 @@ def show_model_training():
                             plt.ylabel('Predicted')
                             plt.tight_layout()
                             st.pyplot(fig)
-                            
                             # Error distribution
                             fig, ax = plt.subplots(figsize=(10, 6))
                             errors = y_test - y_pred
@@ -1466,28 +1412,23 @@ def show_model_training():
                             plt.axvline(x=0, color='r', linestyle='--')
                             plt.tight_layout()
                             st.pyplot(fig)
-                            
                             # Calculate permutation importance
                             try:
                                 from sklearn.inspection import permutation_importance
-                                
                                 # Calculate permutation importance
                                 perm_importance = permutation_importance(
-                                    model, X_test, y_test, 
+                                    model, X_test, y_test,
                                     n_repeats=5, random_state=42, n_jobs=-1
                                 )
-                                
                                 # Create DataFrame for importance scores
                                 importance_df = pd.DataFrame({
                                     'feature': X.columns,
                                     'importance': perm_importance.importances_mean,
                                     'std': perm_importance.importances_std
                                 }).sort_values('importance', ascending=False)
-                                
                                 # Display feature importance
                                 st.markdown("### Feature Importance (Permutation Method)")
                                 st.dataframe(importance_df)
-                                
                                 # Plot feature importance
                                 fig, ax = plt.subplots(figsize=(10, 6))
                                 importance_df.head(15).sort_values('importance', ascending=True).plot(
@@ -1498,13 +1439,11 @@ def show_model_training():
                             except Exception as e:
                                 st.info(f"Could not calculate permutation importance: {str(e)}")
                                 importance_df = pd.DataFrame(columns=['feature', 'importance', 'std'])
-                            
                             # Store model
                             if 'models' not in st.session_state:
                                 st.session_state.models = {}
                             model_name = "Custom SVR"
                             st.session_state.models[model_name] = model
-                            
                             # Store in report data
                             if 'custom_models' not in st.session_state.report_data:
                                 st.session_state.report_data['custom_models'] = {}
@@ -1527,46 +1466,39 @@ def show_model_training():
                         st.error(f"Error training custom SVR: {str(e)}")
                         import traceback
                         st.code(traceback.format_exc())
-    
     with tab3:
         st.markdown("<div class='subheader'>Model Evaluation</div>", unsafe_allow_html=True)
-        
         # Add explanation of metrics
         with st.expander("📊 Understanding Model Evaluation Metrics", expanded=True):
             st.markdown("""
             ### Classification Metrics
-            - **Accuracy**: The proportion of correct predictions among the total number of predictions (both true positives and true negatives). *Higher is better*.
-            - **Precision**: The proportion of true positives among all positive predictions. Measures how many of the predicted positives are actually positive. *Higher is better*.
-            - **Recall (Sensitivity)**: The proportion of true positives among all actual positives. Measures how many of the actual positives were correctly identified. *Higher is better*.
-            - **F1 Score**: The harmonic mean of precision and recall. Provides a balance between precision and recall. *Higher is better*.
-            - **CV Accuracy**: Cross-validation accuracy, the average accuracy across multiple train-test splits. More robust than a single accuracy score. *Higher is better*.
-            - **CV Std**: Standard deviation of cross-validation accuracy. Indicates consistency of model performance. *Lower is better*.
-            
+            - **Accuracy**: The proportion of correct predictions among the total number of predictions (both true positives and true negatives). _Higher is better_.
+            - **Precision**: The proportion of true positives among all positive predictions. Measures how many of the predicted positives are actually positive. _Higher is better_.
+            - **Recall (Sensitivity)**: The proportion of true positives among all actual positives. Measures how many of the actual positives were correctly identified. _Higher is better_.
+            - **F1 Score**: The harmonic mean of precision and recall. Provides a balance between precision and recall. _Higher is better_.
+            - **CV Accuracy**: Cross-validation accuracy, the average accuracy across multiple train-test splits. More robust than a single accuracy score. _Higher is better_.
+            - **CV Std**: Standard deviation of cross-validation accuracy. Indicates consistency of model performance. _Lower is better_.
             ### Regression Metrics
-            - **MSE (Mean Squared Error)**: Average of squared differences between predicted and actual values. Penalizes larger errors more. *Lower is better*.
-            - **RMSE (Root Mean Squared Error)**: Square root of MSE. In the same units as the target variable. *Lower is better*.
-            - **MAE (Mean Absolute Error)**: Average of absolute differences between predicted and actual values. Less sensitive to outliers than MSE. *Lower is better*.
-            - **R² Score**: Proportion of variance in the target variable that is predictable from the features. Ranges from 0 to 1 (can be negative in bad models). *Higher is better*.
-            - **CV R²**: Cross-validation R² score, the average R² across multiple train-test splits. *Higher is better*.
-            - **CV Std**: Standard deviation of cross-validation R² scores. *Lower is better*.
-            
+            - **MSE (Mean Squared Error)**: Average of squared differences between predicted and actual values. Penalizes larger errors more. _Lower is better_.
+            - **RMSE (Root Mean Squared Error)**: Square root of MSE. In the same units as the target variable. _Lower is better_.
+            - **MAE (Mean Absolute Error)**: Average of absolute differences between predicted and actual values. Less sensitive to outliers than MSE. _Lower is better_.
+            - **R² Score**: Proportion of variance in the target variable that is predictable from the features. Ranges from 0 to 1 (can be negative in bad models). _Higher is better_.
+            - **CV R²**: Cross-validation R² score, the average R² across multiple train-test splits. _Higher is better_.
+            - **CV Std**: Standard deviation of cross-validation R² scores. _Lower is better_.
             ### Feature Importance
             - **Feature Importance**: Indicates how useful each feature is in the prediction. For tree-based models, this is calculated directly from the model structure.
             - **Permutation Importance**: For models without built-in feature importance, this measures how much model performance decreases when a feature is randomly shuffled.
             """)
-        
         # Check if models exist
         if 'models' not in st.session_state or not st.session_state.models:
             st.warning("No trained models available for evaluation. Please train models first.")
             return
-        
         # Model selection for evaluation
         model_names = list(st.session_state.models.keys())
         selected_model = st.selectbox(
             "Select model to evaluate",
             model_names
         )
-        
         # In the model evaluation section of tab3 where the error occurs (around line 441)
         if st.button("Evaluate Model", key="evaluate_model"):
             try:
@@ -1576,7 +1508,6 @@ def show_model_training():
                     # Split data for evaluation
                     from sklearn.model_selection import train_test_split
                     _, X_test, _, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-                    
                     # Check if this is a neural network model (TensorFlow/Keras)
                     is_neural_network = 'keras' in str(type(model)).lower()
                     
@@ -1584,7 +1515,6 @@ def show_model_training():
                     if target_type == 'categorical':
                         # Classification evaluation
                         from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, roc_curve, auc
-                        
                         # Calculate number of classes once, before using it
                         n_classes = len(np.unique(y))
                         
@@ -1607,36 +1537,64 @@ def show_model_training():
                         # Display metrics
                         st.metric("Accuracy", f"{accuracy:.4f}")
                         
-                        # Classification report
-                        report = classification_report(y_test, y_pred, output_dict=True)
-                        report_df = pd.DataFrame(report).transpose()
+                        # Classification report with original class names
                         st.markdown("### Classification Report")
+                        report = classification_report(y_test, y_pred, output_dict=True)
+                        
+                        # Convert class labels to original categories if mapping exists
+                        if target_mapping:
+                            # Create reverse mapping (encoded value -> original category)
+                            reverse_mapping = {v: k for k, v in target_mapping.items()}
+                            
+                            # Create a new report with original category names
+                            new_report = {}
+                            for key, val in report.items():
+                                if key.isdigit() or (isinstance(key, (int, float)) and int(key) == key):
+                                    # This is a class label - convert it
+                                    new_key = reverse_mapping.get(int(key), str(key))
+                                    new_report[new_key] = val
+                                else:
+                                    # This is a metric like 'accuracy', 'macro avg', etc.
+                                    new_report[key] = val
+                            
+                            report = new_report
+                        
+                        report_df = pd.DataFrame(report).transpose()
                         st.dataframe(report_df)
                         
                         # Plot confusion matrix
                         st.markdown("### Confusion Matrix")
                         cm = confusion_matrix(y_test, y_pred)
-                        fig, ax = plt.subplots(figsize=(8, 6))
-                        sns.heatmap(cm, annot=True, fmt='d', ax=ax)
+                        
+                        # Get class names for the confusion matrix
+                        if target_mapping:
+                            # Create reverse mapping (encoded value -> original category)
+                            reverse_mapping = {v: k for k, v in target_mapping.items()}
+                            class_names = [reverse_mapping.get(i, str(i)) for i in range(len(np.unique(y)))]
+                            
+                            # Plot confusion matrix with original class names
+                            fig, ax = plt.subplots(figsize=(8, 6))
+                            sns.heatmap(cm, annot=True, fmt='d', ax=ax, xticklabels=class_names, yticklabels=class_names)
+                        else:
+                            fig, ax = plt.subplots(figsize=(8, 6))
+                            sns.heatmap(cm, annot=True, fmt='d', ax=ax)
+                            
                         plt.title('Confusion Matrix')
                         plt.ylabel('True Label')
                         plt.xlabel('Predicted Label')
                         st.pyplot(fig)
-                        
+
                         # ROC curve for binary classification
                         if n_classes == 2 and (hasattr(model, 'predict_proba') or is_neural_network):
                             st.markdown("### ROC Curve")
-                            
                             # Get probability scores
                             if is_neural_network:
                                 y_pred_proba = model.predict(X_test).flatten()
                             else:
                                 y_pred_proba = model.predict_proba(X_test)[:, 1]
-                            
                             # Calculate ROC curve and AUC
-                            fpr, tpr, _ = roc_curve(y_test, y_pred_proba)
+                            fpr, tpr, _= roc_curve(y_test, y_pred_proba)
                             roc_auc = auc(fpr, tpr)
-                            
                             # Plot ROC curve
                             fig, ax = plt.subplots(figsize=(8, 6))
                             plt.plot(fpr, tpr, label=f'ROC curve (area = {roc_auc:.2f})')
@@ -1663,43 +1621,35 @@ def show_model_training():
                         else:
                             # For non-tree models, calculate permutation importance
                             st.markdown("### Feature Importance (Permutation Method)")
-                            
                             try:
                                 from sklearn.inspection import permutation_importance
-                                
                                 # Create wrapper for neural network models
                                 if is_neural_network:
                                     class KerasClassifierWrapper:
                                         def __init__(self, model):
                                             self.model = model
                                             self.classes_ = np.unique(y)
-                                        
                                         def predict(self, X):
                                             if len(self.classes_) == 2:
                                                 return (self.model.predict(X) > 0.5).astype('int32').flatten()
                                             else:
                                                 return np.argmax(self.model.predict(X), axis=1)
-                                    
                                     model_for_perm = KerasClassifierWrapper(model)
                                 else:
                                     model_for_perm = model
-                                    
                                 # Calculate permutation importance
                                 perm_importance = permutation_importance(
-                                    model_for_perm, X_test, y_test, 
+                                    model_for_perm, X_test, y_test,
                                     n_repeats=5, random_state=42, n_jobs=-1
                                 )
-                                
                                 # Create DataFrame for importance scores
                                 importance_df = pd.DataFrame({
                                     'feature': X.columns,
                                     'importance': perm_importance.importances_mean,
                                     'std': perm_importance.importances_std
                                 }).sort_values('importance', ascending=False)
-                                
                                 # Display importance table
                                 st.dataframe(importance_df)
-                                
                                 # Plot importance
                                 fig, ax = plt.subplots(figsize=(10, 6))
                                 importance_df.head(15).sort_values('importance', ascending=True).plot(
@@ -1709,29 +1659,24 @@ def show_model_training():
                                 st.pyplot(fig)
                             except Exception as e:
                                 st.info(f"Could not calculate permutation importance: {str(e)}")
-                    
                     else:  # Regression
                         # Regression evaluation
                         from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-                        
                         # Handle predictions based on model type
                         if is_neural_network:
                             y_pred = model.predict(X_test).flatten()
                         else:
                             y_pred = model.predict(X_test)
-                        
                         # Calculate metrics
                         mse = mean_squared_error(y_test, y_pred)
                         rmse = np.sqrt(mse)
                         mae = mean_absolute_error(y_test, y_pred)
                         r2 = r2_score(y_test, y_pred)
-                        
                         # Display metrics
                         col1, col2, col3 = st.columns(3)
                         col1.metric("RMSE", f"{rmse:.4f}")
                         col2.metric("MAE", f"{mae:.4f}")
                         col3.metric("R² Score", f"{r2:.4f}")
-                        
                         # Plot actual vs predicted
                         st.markdown("### Actual vs Predicted")
                         fig, ax = plt.subplots(figsize=(8, 6))
@@ -1741,7 +1686,6 @@ def show_model_training():
                         plt.ylabel("Predicted")
                         plt.title("Actual vs Predicted Values")
                         st.pyplot(fig)
-                        
                         # Error distribution
                         st.markdown("### Error Distribution")
                         fig, ax = plt.subplots(figsize=(8, 6))
@@ -1753,7 +1697,6 @@ def show_model_training():
                         plt.axvline(x=0, color='r', linestyle='--')
                         plt.tight_layout()
                         st.pyplot(fig)
-                        
                         # Feature importance (tree-based models) or permutation importance (other models)
                         if hasattr(model, 'feature_importances_'):
                             st.markdown("### Feature Importance")
@@ -1768,39 +1711,31 @@ def show_model_training():
                         else:
                             # For non-tree models, calculate permutation importance
                             st.markdown("### Feature Importance (Permutation Method)")
-                            
                             try:
                                 from sklearn.inspection import permutation_importance
-                                
                                 # Create wrapper for neural network models
                                 if is_neural_network:
                                     class KerasRegressorWrapper:
                                         def __init__(self, model):
                                             self.model = model
-                                        
                                         def predict(self, X):
                                             return self.model.predict(X).flatten()
-                                    
                                     model_for_perm = KerasRegressorWrapper(model)
                                 else:
                                     model_for_perm = model
-                                    
                                 # Calculate permutation importance
                                 perm_importance = permutation_importance(
-                                    model_for_perm, X_test, y_test, 
+                                    model_for_perm, X_test, y_test,
                                     n_repeats=5, random_state=42, n_jobs=-1
                                 )
-                                
                                 # Create DataFrame for importance scores
                                 importance_df = pd.DataFrame({
                                     'feature': X.columns,
                                     'importance': perm_importance.importances_mean,
                                     'std': perm_importance.importances_std
                                 }).sort_values('importance', ascending=False)
-                                
                                 # Display importance table
                                 st.dataframe(importance_df)
-                                
                                 # Plot importance
                                 fig, ax = plt.subplots(figsize=(10, 6))
                                 importance_df.head(15).sort_values('importance', ascending=True).plot(
@@ -1810,29 +1745,34 @@ def show_model_training():
                                 st.pyplot(fig)
                             except Exception as e:
                                 st.info(f"Could not calculate permutation importance: {str(e)}")
-                                
             except Exception as e:
                 st.error(f"Error evaluating model: {str(e)}")
                 import traceback
                 st.code(traceback.format_exc())
 
+# Save model button
 if st.button("Save Model", key="save_model"):
     try:
+        # Get selected model - need to check if we're in tab3 first
+        if 'selected_model' in locals():
+            model_to_save = st.session_state.models[selected_model]
+            model_name_to_save = selected_model
+        else:
+            # If not in tab3, take the first model from the session state
+            model_name_to_save = list(st.session_state.models.keys())[0]
+            model_to_save = st.session_state.models[model_name_to_save]
+        
         with st.spinner("Saving model..."):
             # Serialize the model
-            model_bytes = pickle.dumps(model)
-            
+            model_bytes = pickle.dumps(model_to_save)
             # Generate filename
-            model_filename = get_timestamped_filename(f"{selected_model}_model", "pkl")
-            
+            model_filename = get_timestamped_filename(f"{model_name_to_save}_model", "pkl")
             # Save model to user-specified directory
             success, message, path = save_file(model_bytes, model_filename, "models")
-            
             if success:
                 st.success(f"Model saved: {path}")
             else:
                 st.warning(message)
-                
                 # Provide download as backup
                 st.download_button(
                     label="Download Model",
@@ -1842,8 +1782,8 @@ if st.button("Save Model", key="save_model"):
                 )
     except Exception as e:
         st.error(f"Error saving model: {str(e)}")
-
-# streamlit_app/pages/model_training.py (add at the end)
+        import traceback
+        st.code(traceback.format_exc())
 
 # Import the file browser
 from streamlit_app.components.file_browser import file_browser
@@ -1857,7 +1797,6 @@ st.subheader("Load Saved Models")
 # Get models directory
 if 'save_directory' in st.session_state:
     models_dir = os.path.join(st.session_state.save_directory, "models")
-    
     # Check if directory exists, create if it doesn't
     if not os.path.exists(models_dir):
         try:
@@ -1868,31 +1807,24 @@ if 'save_directory' in st.session_state:
     
     # Use the file browser component
     selected_model_file = file_browser(models_dir, "pkl")
-    
     if selected_model_file:
         st.write(f"Selected model: {os.path.basename(selected_model_file)}")
-        
         # Offer option to load the model
         if st.button("Load Model"):
             try:
                 with open(selected_model_file, "rb") as f:
                     loaded_model = pickle.load(f)
-                
                 # Store in session state
                 model_name = os.path.basename(selected_model_file).split('.')[0]
                 if 'models' not in st.session_state:
                     st.session_state.models = {}
-                
                 st.session_state.models[model_name] = loaded_model
                 st.success(f"Model '{model_name}' loaded successfully!")
-                
                 # Provide model info if available
                 st.write("Model type:", type(loaded_model).__name__)
-                
                 # If it's a sklearn model, show more details
                 if hasattr(loaded_model, 'get_params'):
                     st.write("Model parameters:", loaded_model.get_params())
-                
             except Exception as e:
                 st.error(f"Could not load model: {str(e)}")
                 import traceback

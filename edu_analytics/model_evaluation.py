@@ -89,10 +89,11 @@ def evaluate_model(
 def plot_confusion_matrix(
     cm: np.ndarray,
     class_names: Optional[List[str]] = None,
+    target_mapping: Optional[Dict] = None,
     title: str = "Confusion Matrix"
 ) -> plt.Figure:
     """
-    Plot confusion matrix
+    Plot confusion matrix with proper class labels
     
     Parameters:
     -----------
@@ -100,22 +101,29 @@ def plot_confusion_matrix(
         Confusion matrix
     class_names : List[str], optional
         List of class names
+    target_mapping : Dict, optional
+        Mapping from original categories to encoded values
     title : str
         Plot title
-        
+    
     Returns:
     --------
     Matplotlib Figure
     """
+    # Use provided class names, derive from mapping, or use default indices
     if class_names is None:
-        class_names = [str(i) for i in range(cm.shape[0])]
+        if target_mapping:
+            # Create reverse mapping (encoded value -> original category)
+            reverse_mapping = {v: k for k, v in target_mapping.items()}
+            class_names = [reverse_mapping.get(i, str(i)) for i in range(cm.shape[0])]
+        else:
+            class_names = [str(i) for i in range(cm.shape[0])]
     
     fig, ax = plt.subplots(figsize=(10, 8))
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=class_names, yticklabels=class_names)
     plt.ylabel('True Label')
     plt.xlabel('Predicted Label')
     plt.title(title)
-    
     return fig
 
 def plot_roc_curve(

@@ -104,8 +104,9 @@ def get_timestamped_filename(base_name, extension):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     return f"{base_name}_{timestamp}.{extension}"
 
+# Updated code for utils.py - Enhanced interpret_prediction
 def interpret_prediction(
-    prediction: float, 
+    prediction: float,
     target_type: str,
     target_mapping: Optional[Dict] = None
 ) -> str:
@@ -114,13 +115,13 @@ def interpret_prediction(
     
     Parameters:
     -----------
-    prediction : float
-        Raw model prediction
+    prediction : float or int
+        Raw model prediction (could be a numeric value or class index)
     target_type : str
         Type of target ('categorical', 'numeric', 'time')
     target_mapping : Dict, optional
-        Mapping dictionary for categorical targets
-        
+        Mapping dictionary for categorical targets (original category -> encoded value)
+    
     Returns:
     --------
     str : Human-readable prediction
@@ -128,21 +129,28 @@ def interpret_prediction(
     if target_type == 'numeric':
         # For numeric targets, just return the value
         return f"{prediction:.2f}"
-    
     elif target_type == 'categorical':
         # For categorical targets, convert back to original label
         if target_mapping:
-            # We need to reverse the mapping
+            # Create reverse mapping (encoded value -> original category)
             reverse_mapping = {v: k for k, v in target_mapping.items()}
-            return reverse_mapping.get(int(prediction) if isinstance(prediction, float) else prediction, str(prediction))
+            
+            # Handle different types of predictions
+            if isinstance(prediction, (list, np.ndarray)) and len(prediction) > 0:
+                # For array-like predictions, process each value
+                return [reverse_mapping.get(int(p) if isinstance(p, float) else p, str(p)) 
+                        for p in prediction]
+            else:
+                # For single value
+                pred_key = int(prediction) if isinstance(prediction, float) else prediction
+                return reverse_mapping.get(pred_key, str(prediction))
         else:
+            # If no mapping available, return as string
             return str(prediction)
-    
     elif target_type == 'time':
         # For time targets, convert minutes back to time format
         from .time_analysis import minutes_to_time_string
         return minutes_to_time_string(prediction)
-    
     else:
         # Unknown target type
         return str(prediction)
@@ -560,3 +568,67 @@ def calculate_confidence_interval(
     interval = sem * stats.t.ppf((1 + confidence) / 2, len(data) - 1)
     
     return mean - interval, mean + interval
+
+def get_original_category_name(feature_name, encoded_value):
+    """
+    Convert an encoded categorical value back to its original category name
+    
+    Parameters:
+    -----------
+    feature_name : str
+        Name of the feature
+    encoded_value : int
+        Encoded value (0, 1, 2, etc.)
+    
+    Returns:
+    --------
+    str : Original category name or the encoded value as string if mapping not found
+    """
+    # Try to get the mapping from session state
+    if 'categorical_mappings' in st.session_state and feature_name in st.session_state.categorical_mappings:
+        # Get the reverse mapping (encoded → original)
+        reverse_mapping = st.session_state.categorical_mappings[feature_name]['reverse']
+        # Convert the encoded value to int to ensure proper lookup
+        try:
+            encoded_int = int(encoded_value) if isinstance(encoded_value, (int, float)) else encoded_value
+            # Return the original category name if found, otherwise return the encoded value as string
+            return reverse_mapping.get(encoded_int, str(encoded_value))
+        except:
+            return str(encoded_value)
+    else:
+        # If no mapping found, return the encoded value as string
+        return str(encoded_value)
+
+def get_original_category_names(
+    encoded_values: Union[List[int], np.ndarray, int],
+    target_mapping: Optional[Dict] = None
+) -> Union[List[str], str]:
+    """
+    Convert encoded categorical values back to original category names
+    
+    Parameters:
+    -----------
+    encoded_values : array-like or int
+        Encoded values (0, 1, 2, etc.) or a single encoded value
+    target_mapping : Dict, optional
+        Mapping from original categories to encoded values
+        
+    Returns:
+    --------
+    List of original category names or a single category name
+    """
+    # If no mapping is provided, just convert to strings
+    if target_mapping is None:
+        if isinstance(encoded_values, (list, np.ndarray)):
+            return [str(val) for val in encoded_values]
+        else:
+            return str(encoded_values)
+    
+    # Create reverse mapping (encoded value -> original category)
+    reverse_mapping = {v: k for k, v in target_mapping.items()}
+    
+    # Handle both single values and collections
+    if isinstance(encoded_values, (list, np.ndarray)):
+        return [reverse_mapping.get(val, str(val)) for val in encoded_values]
+    else:
+        return reverse_mapping.get(encoded_values, str(encoded_values))

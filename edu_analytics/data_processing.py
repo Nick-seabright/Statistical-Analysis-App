@@ -313,8 +313,22 @@ def prepare_data(
         logger.info(f"Features processed: {len(selected_features)}")
         logger.info(f"Categorical features encoded: {len(categorical_encoders)}")
         logger.info(f"Time features converted: {len(time_columns)}")
+
+        # Store mappings for each categorical feature
+        categorical_mappings = {}
+        for feature, encoder in categorical_encoders.items():
+            if hasattr(encoder, 'classes_'):
+                # Create mappings
+                forward_mapping = {val: i for i, val in enumerate(encoder.classes_)}
+                reverse_mapping = {i: val for i, val in enumerate(encoder.classes_)}
+                categorical_mappings[feature] = {
+                    'forward': forward_mapping,  # Original → Encoded
+                    'reverse': reverse_mapping,  # Encoded → Original
+                    'classes': encoder.classes_.tolist()
+                }
         
-        return X_scaled, y, categorical_encoders, target_type, target_mapping, scaler, original_target
+        # Return processed data with mappings
+        return X, y, categorical_encoders, target_type, target_mapping, scaler, original_target, categorical_mappings        
     except Exception as e:
         logger.error(f"Error in data preparation: {str(e)}")
         raise
