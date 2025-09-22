@@ -685,8 +685,26 @@ def show_statistical_analysis():
                             X_subset = data[numeric_features].copy()
                             y_subset = data[target_column].copy()
                             
-                            # Handle missing values
+                            # Proper handling of missing values
+                            # 1. Remove rows with NaN in target
+                            valid_target_mask = ~y_subset.isna()
+                            X_subset = X_subset[valid_target_mask]
+                            y_subset = y_subset[valid_target_mask]
+                            
+                            # 2. Fill missing values in features with their mean
                             X_subset = X_subset.fillna(X_subset.mean())
+                            
+                            # 3. Check if we have any columns that are still all NaN (if mean didn't work)
+                            all_nan_cols = X_subset.columns[X_subset.isna().all()].tolist()
+                            if all_nan_cols:
+                                X_subset = X_subset.drop(columns=all_nan_cols)
+                                st.warning(f"Dropped columns with all NaN values: {', '.join(all_nan_cols)}")
+                            
+                            # 4. Check if there are any remaining NaNs
+                            if X_subset.isna().any().any():
+                                # Fill any remaining NaNs with 0
+                                X_subset = X_subset.fillna(0)
+                                st.warning("Some NaN values were filled with 0 as a fallback.")
                             
                             # Train a Random Forest to get feature importance
                             from sklearn.ensemble import RandomForestClassifier
