@@ -2887,170 +2887,125 @@ def show_model_training():
                                 col2.pyplot(fig2)
                                 
                                 # Threshold optimization curve for binary classification
-                                st.markdown("### Threshold Optimization")
-                                st.info("This visualization helps find the optimal threshold for your specific needs. "
-                                      "Move the threshold to balance precision and recall.")
-                                
-                                # Create dataframe of threshold metrics
-                                thresh_metrics = []
-                                
-                                # Use fewer thresholds for efficiency
-                                eval_thresholds = np.linspace(0.05, 0.95, 19)
-                                
-                                for t in eval_thresholds:
-                                    y_pred_t = (y_pred_proba > t).astype(int)
-                                    precision_t = precision_score(y_test, y_pred_t, zero_division=0)
-                                    recall_t = recall_score(y_test, y_pred_t)
-                                    f1_t = 2 * (precision_t * recall_t) / (precision_t + recall_t) if (precision_t + recall_t) > 0 else 0
-                                    accuracy_t = accuracy_score(y_test, y_pred_t)
-                                    thresh_metrics.append({
-                                        'threshold': t,
-                                        'precision': precision_t,
-                                        'recall': recall_t,
-                                        'f1': f1_t,
-                                        'accuracy': accuracy_t
-                                    })
-                                
-                                thresh_df = pd.DataFrame(thresh_metrics)
-                                
-                                # Store threshold metrics in session state
-                                st.session_state.evaluation_state['threshold_metrics'] = thresh_df
-                                
-                                # Plot threshold metrics
-                                fig3, ax3 = plt.subplots(figsize=(10, 6))
-                                ax3.plot(thresh_df['threshold'], thresh_df['precision'], label='Precision')
-                                ax3.plot(thresh_df['threshold'], thresh_df['recall'], label='Recall')
-                                ax3.plot(thresh_df['threshold'], thresh_df['f1'], label='F1 Score')
-                                ax3.plot(thresh_df['threshold'], thresh_df['accuracy'], label='Accuracy')
-                                
-                                # Add vertical line for current/default threshold
-                                if custom_threshold is not None:
-                                    ax3.axvline(x=custom_threshold, color='r', linestyle='--',
-                                              label=f'Custom threshold ({custom_threshold:.2f})')
-                                else:
-                                    ax3.axvline(x=0.5, color='k', linestyle='--',
-                                              label='Default threshold (0.5)')
-                                
-                                # Find threshold with maximum F1 score
-                                best_f1_threshold = thresh_df.loc[thresh_df['f1'].idxmax(), 'threshold']
-                                ax3.axvline(x=best_f1_threshold, color='g', linestyle='--',
-                                          label=f'Best F1 threshold ({best_f1_threshold:.2f})')
-                                
-                                ax3.set_xlim([0.0, 1.0])
-                                ax3.set_ylim([0.0, 1.05])
-                                ax3.set_xlabel('Threshold')
-                                ax3.set_ylabel('Score')
-                                ax3.set_title('Metrics at Different Thresholds')
-                                ax3.legend(loc="best")
-                                ax3.grid(True, alpha=0.3)
-                                st.pyplot(fig3)
-                                
-                                # Store best F1 threshold in session state
-                                st.session_state.evaluation_state['best_f1_threshold'] = best_f1_threshold
-                                
-                                # Recommended threshold based on class imbalance
-                                class_distribution = pd.Series(y_test).value_counts(normalize=True)
-                                minority_class_pct = class_distribution.min()
-                                
-                                st.markdown("### Threshold Recommendations")
-                                st.info(f"Class distribution: {dict(pd.Series(y_test).value_counts())}")
-                                
-                                recommendations = [
-                                    {
-                                        "name": "Balanced (Default)",
-                                        "threshold": 0.5,
-                                        "description": "Standard threshold, assumes equal class importance."
-                                    },
-                                    {
-                                        "name": "Maximum F1",
-                                        "threshold": best_f1_threshold,
-                                        "description": "Optimizes the balance between precision and recall."
-                                    },
-                                    {
-                                        "name": "Class-Balanced",
-                                        "threshold": 1 - minority_class_pct,
-                                        "description": "Adjusts for class imbalance, increasing minority class recall."
-                                    },
-                                ]
-                                
-                                # Store recommendations in session state
-                                st.session_state.evaluation_state['threshold_recommendations'] = recommendations
-                                
-                                # Display recommendations
-                                for rec in recommendations:
-                                    col1, col2 = st.columns([1, 3])
-                                    col1.metric(rec["name"], f"{rec['threshold']:.2f}")
-                                    col2.write(rec["description"])
-                                
-                                # Add option to apply new threshold
-                                st.markdown("### Apply New Threshold")
-                                new_threshold = st.slider(
-                                    "Select threshold to apply",
-                                    min_value=0.0,
-                                    max_value=1.0,
-                                    value=custom_threshold if custom_threshold is not None else 0.5,
-                                    step=0.05,
-                                    key="threshold_slider"
-                                )
-                                
-                                # Use a container for the button and results
-                                threshold_button_col, _ = st.columns([1, 3])
-                                apply_threshold = threshold_button_col.button("Apply New Threshold", key="apply_new_threshold_btn")
-                                
-                                # Container for threshold results
-                                threshold_results = st.container()
-                                
-                                # Update state if button is clicked
-                                if apply_threshold:
-                                    st.session_state.evaluation_state['threshold_applied'] = True
-                                    st.session_state.evaluation_state['applied_threshold'] = new_threshold
-                                
-                                # Show results if threshold has been applied
-                                if st.session_state.evaluation_state['threshold_applied']:
-                                    applied_threshold = st.session_state.evaluation_state['applied_threshold']
+                                if n_classes == 2 and y_pred_proba is not None:
+                                    st.markdown("### Threshold Optimization")
+                                    st.info("This visualization helps find the optimal threshold for your specific needs. "
+                                           "Move the threshold to balance precision and recall.")
                                     
-                                    with threshold_results:
-                                        # Get data from session state
-                                        y_test = st.session_state.evaluation_state['y_test']
-                                        y_pred_proba = st.session_state.evaluation_state['y_pred_proba']
+                                    # Create dataframe of threshold metrics
+                                    thresh_metrics = []
+                                    
+                                    # Use fewer thresholds for efficiency
+                                    eval_thresholds = np.linspace(0.05, 0.95, 19)
+                                    
+                                    for t in eval_thresholds:
+                                        y_pred_t = (y_pred_proba > t).astype(int)
+                                        precision_t = precision_score(y_test, y_pred_t, zero_division=0)
+                                        recall_t = recall_score(y_test, y_pred_t)
+                                        f1_t = 2 * (precision_t * recall_t) / (precision_t + recall_t) if (precision_t + recall_t) > 0 else 0
+                                        accuracy_t = accuracy_score(y_test, y_pred_t)
+                                        thresh_metrics.append({
+                                            'threshold': t,
+                                            'precision': precision_t,
+                                            'recall': recall_t,
+                                            'f1': f1_t,
+                                            'accuracy': accuracy_t
+                                        })
+                                    
+                                    thresh_df = pd.DataFrame(thresh_metrics)
+                                    
+                                    # Plot threshold metrics
+                                    fig3, ax3 = plt.subplots(figsize=(10, 6))
+                                    ax3.plot(thresh_df['threshold'], thresh_df['precision'], label='Precision')
+                                    ax3.plot(thresh_df['threshold'], thresh_df['recall'], label='Recall')
+                                    ax3.plot(thresh_df['threshold'], thresh_df['f1'], label='F1 Score')
+                                    ax3.plot(thresh_df['threshold'], thresh_df['accuracy'], label='Accuracy')
+                                    
+                                    # Add vertical line for current/default threshold
+                                    if custom_threshold is not None:
+                                        ax3.axvline(x=custom_threshold, color='r', linestyle='--',
+                                                  label=f'Custom threshold ({custom_threshold:.2f})')
+                                    else:
+                                        ax3.axvline(x=0.5, color='k', linestyle='--',
+                                                  label='Default threshold (0.5)')
+                                    
+                                    # Find threshold with maximum F1 score
+                                    best_f1_threshold = thresh_df.loc[thresh_df['f1'].idxmax(), 'threshold']
+                                    ax3.axvline(x=best_f1_threshold, color='g', linestyle='--',
+                                              label=f'Best F1 threshold ({best_f1_threshold:.2f})')
+                                    
+                                    ax3.set_xlim([0.0, 1.0])
+                                    ax3.set_ylim([0.0, 1.05])
+                                    ax3.set_xlabel('Threshold')
+                                    ax3.set_ylabel('Score')
+                                    ax3.set_title('Metrics at Different Thresholds')
+                                    ax3.legend(loc="best")
+                                    ax3.grid(True, alpha=0.3)
+                                    st.pyplot(fig3)
+                                    
+                                    # Add option to apply new threshold
+                                    st.markdown("### Apply New Threshold")
+                                    
+                                    # Initialize the threshold state
+                                    if 'threshold_applied' not in st.session_state:
+                                        st.session_state.threshold_applied = False
+                                    if 'new_threshold' not in st.session_state:
+                                        st.session_state.new_threshold = custom_threshold if custom_threshold is not None else 0.5
+                                    
+                                    # Define a callback function that will be triggered when the button is clicked
+                                    def apply_threshold():
+                                        st.session_state.threshold_applied = True
+                                    
+                                    # Threshold selection
+                                    new_threshold = st.slider(
+                                        "Select threshold to apply",
+                                        min_value=0.0,
+                                        max_value=1.0,
+                                        value=st.session_state.new_threshold,
+                                        step=0.05,
+                                        key="new_threshold"
+                                    )
+                                    
+                                    # Button with callback
+                                    st.button("Apply Threshold", on_click=apply_threshold)
+                                    
+                                    # Display results when threshold has been applied
+                                    if st.session_state.threshold_applied:
+                                        # Calculate new predictions with the threshold
+                                        y_pred_new = (y_pred_proba > new_threshold).astype(int)
                                         
-                                        # Calculate new predictions and metrics
-                                        y_pred_new = (y_pred_proba > applied_threshold).astype(int)
+                                        # Calculate metrics
                                         accuracy_new = accuracy_score(y_test, y_pred_new)
                                         precision_new = precision_score(y_test, y_pred_new, zero_division=0)
                                         recall_new = recall_score(y_test, y_pred_new)
                                         f1_new = f1_score(y_test, y_pred_new)
                                         
-                                        # Get original metrics
-                                        metrics = st.session_state.evaluation_state['metrics']
-                                        
-                                        # Show new metrics with deltas
-                                        st.success(f"Applied threshold: {applied_threshold:.2f}")
+                                        # Show metrics with delta compared to original
+                                        st.success(f"Applied threshold: {new_threshold:.2f}")
                                         col1, col2, col3, col4 = st.columns(4)
-                                        col1.metric("Accuracy", f"{accuracy_new:.4f}",
-                                                  f"{accuracy_new - metrics['accuracy']:.4f}")
-                                        col2.metric("Precision", f"{precision_new:.4f}",
-                                                  f"{precision_new - metrics['precision']:.4f}")
-                                        col3.metric("Recall", f"{recall_new:.4f}",
-                                                  f"{recall_new - metrics['recall']:.4f}")
-                                        col4.metric("F1 Score", f"{f1_new:.4f}",
-                                                  f"{f1_new - metrics['f1']:.4f}")
+                                        col1.metric("Accuracy", f"{accuracy_new:.4f}", f"{accuracy_new - accuracy:.4f}")
+                                        col2.metric("Precision", f"{precision_new:.4f}", f"{precision_new - precision:.4f}")
+                                        col3.metric("Recall", f"{recall_new:.4f}", f"{recall_new - recall:.4f}")
+                                        col4.metric("F1 Score", f"{f1_new:.4f}", f"{f1_new - f1:.4f}")
                                         
                                         # Update confusion matrix
                                         cm_new = confusion_matrix(y_test, y_pred_new)
                                         fig4, ax4 = plt.subplots(figsize=(8, 6))
                                         
-                                        # Get class names if available
-                                        class_names = st.session_state.evaluation_state.get('class_names', None)
-                                        
-                                        if class_names:
-                                            sns.heatmap(cm_new, annot=True, fmt='d', ax=ax4,
-                                                      xticklabels=class_names, yticklabels=class_names,
+                                        # Get class names for the confusion matrix
+                                        if target_mapping:
+                                            # Create reverse mapping (encoded value -> original category)
+                                            reverse_mapping = {v: k for k, v in target_mapping.items()}
+                                            class_names = [reverse_mapping.get(i, str(i)) for i in range(len(np.unique(y)))]
+                                            
+                                            # Plot confusion matrix with original class names
+                                            sns.heatmap(cm_new, annot=True, fmt='d', ax=ax4, xticklabels=class_names, yticklabels=class_names,
                                                       cmap='Blues')
                                         else:
+                                            # Default behavior without mapping
                                             sns.heatmap(cm_new, annot=True, fmt='d', ax=ax4, cmap='Blues')
                                         
-                                        plt.title(f'Confusion Matrix (Threshold = {applied_threshold:.2f})')
+                                        plt.title(f'Confusion Matrix (Threshold = {new_threshold:.2f})')
                                         plt.ylabel('True Label')
                                         plt.xlabel('Predicted Label')
                                         st.pyplot(fig4)
@@ -3087,87 +3042,84 @@ def show_model_training():
                                 st.info("Feature importance is not directly available for this model type. "
                                       "Consider using permutation importance for model interpretation.")
                                 
-                                # Permutation importance button in a column to prevent full-width
-                                perm_col1, _ = st.columns([1, 3])
-                                perm_button = perm_col1.button("Calculate Permutation Importance", key="calc_perm_importance_btn")
+                                # Initialize permutation importance state
+                                if 'perm_importance_classification_calculated' not in st.session_state:
+                                    st.session_state.perm_importance_classification_calculated = False
                                 
-                                # Update state if button is clicked
-                                if perm_button:
-                                    st.session_state.evaluation_state['permutation_calculated'] = True
+                                # Define a callback function that will be triggered when the button is clicked
+                                def calculate_classification_permutation():
+                                    st.session_state.perm_importance_classification_calculated = True
                                 
-                                # Container for permutation results
-                                perm_results = st.container()
+                                # Button with callback
+                                st.button("Calculate Permutation Importance", on_click=calculate_classification_permutation, key="perm_imp_class_btn")
                                 
-                                # Show permutation importance if calculated
-                                if st.session_state.evaluation_state['permutation_calculated']:
-                                    with perm_results:
+                                # Display results when permutation importance has been calculated
+                                if st.session_state.perm_importance_classification_calculated:
+                                    try:
                                         with st.spinner("Calculating permutation importance..."):
-                                            try:
-                                                from sklearn.inspection import permutation_importance
-                                                
-                                                # Create wrapper for neural network if needed
-                                                if is_neural_network:
-                                                    class ModelWrapper:
-                                                        def __init__(self, model):
-                                                            self.model = model
-                                                        
-                                                        def predict(self, X):
-                                                            if n_classes == 2:
-                                                                return (self.model.predict(X) > 0.5).astype(int).flatten()
-                                                            else:
-                                                                return np.argmax(self.model.predict(X), axis=1)
+                                            from sklearn.inspection import permutation_importance
+                                            
+                                            # Create wrapper for neural network if needed
+                                            if is_neural_network:
+                                                class ModelWrapper:
+                                                    def __init__(self, model):
+                                                        self.model = model
                                                     
-                                                    model_for_perm = ModelWrapper(actual_model)
-                                                else:
-                                                    model_for_perm = actual_model
+                                                    def predict(self, X):
+                                                        if n_classes == 2:
+                                                            return (self.model.predict(X) > 0.5).astype(int).flatten()
+                                                        else:
+                                                            return np.argmax(self.model.predict(X), axis=1)
                                                 
-                                                # Calculate permutation importance
-                                                scoring = 'balanced_accuracy' if n_classes == 2 else 'accuracy'
-                                                
-                                                # If we have class imbalance, adjust scoring
-                                                class_counts = np.bincount(y)
-                                                if len(class_counts) > 1:
-                                                    imbalance_ratio = np.min(class_counts) / np.max(class_counts)
-                                                    if imbalance_ratio < 0.2:  # Significant imbalance
-                                                        scoring = 'balanced_accuracy'
-                                                
-                                                r = permutation_importance(
-                                                    model_for_perm, X_test_transformed, y_test,
-                                                    n_repeats=10,
-                                                    random_state=42,
-                                                    scoring=scoring
-                                                )
-                                                
-                                                # Create DataFrame for importance
-                                                perm_importance_df = pd.DataFrame({
-                                                    'feature': X.columns,
-                                                    'importance': r.importances_mean,
-                                                    'std': r.importances_std
-                                                }).sort_values('importance', ascending=False)
-                                                
-                                                # Store in session state
-                                                st.session_state.evaluation_state['permutation_importance'] = perm_importance_df
-                                                
-                                                # Display permutation importance
-                                                st.subheader("Permutation Feature Importance")
-                                                st.dataframe(perm_importance_df)
-                                                
-                                                # Plot permutation importance
-                                                fig, ax = plt.subplots(figsize=(10, 6))
-                                                perm_importance_df.head(15).sort_values('importance').plot(
-                                                    kind='barh', x='feature', y='importance', xerr='std', ax=ax)
-                                                plt.title('Permutation Feature Importance (Top 15)')
-                                                plt.tight_layout()
-                                                st.pyplot(fig)
-                                                
-                                                # Add explanation
-                                                st.markdown("""
-                                                **Permutation Importance** measures how much the model performance decreases when a feature is randomly shuffled.
-                                                Higher values indicate more important features. Features with negative importance can be noise or might be interacting with other features.
-                                                """)
-                                            except Exception as e:
-                                                st.error(f"Error calculating permutation importance: {str(e)}")
-                                                st.code(traceback.format_exc())
+                                                model_for_perm = ModelWrapper(actual_model)
+                                            else:
+                                                model_for_perm = actual_model
+                                            
+                                            # Calculate permutation importance
+                                            scoring = 'balanced_accuracy' if n_classes == 2 else 'accuracy'
+                                            
+                                            # If we have class imbalance, adjust scoring
+                                            class_counts = np.bincount(y_test)
+                                            if len(class_counts) > 1:
+                                                imbalance_ratio = np.min(class_counts) / np.max(class_counts)
+                                                if imbalance_ratio < 0.2:  # Significant imbalance
+                                                    scoring = 'balanced_accuracy'
+                                            
+                                            r = permutation_importance(
+                                                model_for_perm, X_test_transformed, y_test,
+                                                n_repeats=10,
+                                                random_state=42,
+                                                scoring=scoring
+                                            )
+                                            
+                                            # Create DataFrame for importance
+                                            perm_importance_df = pd.DataFrame({
+                                                'feature': X.columns,
+                                                'importance': r.importances_mean,
+                                                'std': r.importances_std
+                                            }).sort_values('importance', ascending=False)
+                                            
+                                            # Display permutation importance
+                                            st.subheader("Permutation Feature Importance")
+                                            st.dataframe(perm_importance_df)
+                                            
+                                            # Plot permutation importance
+                                            fig, ax = plt.subplots(figsize=(10, 6))
+                                            perm_importance_df.head(15).sort_values('importance').plot(
+                                                kind='barh', x='feature', y='importance', xerr='std', ax=ax)
+                                            plt.title('Permutation Feature Importance (Top 15)')
+                                            plt.tight_layout()
+                                            st.pyplot(fig)
+                                            
+                                            # Add explanation
+                                            st.markdown("""
+                                            **Permutation Importance** measures how much the model performance decreases when a feature is randomly shuffled.
+                                            Higher values indicate more important features. Features with negative importance can be noise or might interact with other features.
+                                            """)
+                                    except Exception as e:
+                                        st.error(f"Error calculating permutation importance: {str(e)}")
+                                        import traceback
+                                        st.code(traceback.format_exc())
                         else:  # Regression evaluation
                             # Regression evaluation
                             from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
@@ -3260,69 +3212,72 @@ def show_model_training():
                                 st.info("Feature importance is not directly available for this model type. "
                                       "Consider using permutation importance for model interpretation.")
                                 
-                                # Permutation importance button in a column to prevent full-width
-                                perm_col1, _ = st.columns([1, 3])
-                                perm_button = perm_col1.button("Calculate Permutation Importance", key="calc_perm_importance_reg_btn")
+                                # Initialize permutation importance state
+                                if 'perm_importance_regression_calculated' not in st.session_state:
+                                    st.session_state.perm_importance_regression_calculated = False
                                 
-                                # Update state if button is clicked
-                                if perm_button:
-                                    st.session_state.evaluation_state['permutation_calculated'] = True
+                                # Define a callback function that will be triggered when the button is clicked
+                                def calculate_regression_permutation():
+                                    st.session_state.perm_importance_regression_calculated = True
                                 
-                                # Container for permutation results
-                                perm_results = st.container()
+                                # Button with callback
+                                st.button("Calculate Permutation Importance", on_click=calculate_regression_permutation, key="perm_imp_reg_btn")
                                 
-                                # Show permutation importance if calculated
-                                if st.session_state.evaluation_state['permutation_calculated']:
-                                    with perm_results:
+                                # Display results when permutation importance has been calculated
+                                if st.session_state.perm_importance_regression_calculated:
+                                    try:
                                         with st.spinner("Calculating permutation importance..."):
-                                            try:
-                                                from sklearn.inspection import permutation_importance
-                                                
-                                                # Create wrapper for neural network if needed
-                                                if is_neural_network:
-                                                    class KerasRegressorWrapper:
-                                                        def __init__(self, model):
-                                                            self.model = model
-                                                        
-                                                        def predict(self, X):
-                                                            return self.model.predict(X).flatten()
+                                            from sklearn.inspection import permutation_importance
+                                            
+                                            # Create wrapper for neural network if needed
+                                            if is_neural_network:
+                                                class KerasRegressorWrapper:
+                                                    def __init__(self, model):
+                                                        self.model = model
                                                     
-                                                    model_for_perm = KerasRegressorWrapper(actual_model)
-                                                else:
-                                                    model_for_perm = actual_model
+                                                    def predict(self, X):
+                                                        return self.model.predict(X).flatten()
                                                 
-                                                # Calculate permutation importance
-                                                r = permutation_importance(
-                                                    model_for_perm, X_test_transformed, y_test,
-                                                    n_repeats=10,
-                                                    random_state=42,
-                                                    scoring='r2'
-                                                )
-                                                
-                                                # Create DataFrame for importance
-                                                perm_importance_df = pd.DataFrame({
-                                                    'feature': X.columns,
-                                                    'importance': r.importances_mean,
-                                                    'std': r.importances_std
-                                                }).sort_values('importance', ascending=False)
-                                                
-                                                # Store in session state
-                                                st.session_state.evaluation_state['permutation_importance'] = perm_importance_df
-                                                
-                                                # Display permutation importance
-                                                st.subheader("Permutation Feature Importance")
-                                                st.dataframe(perm_importance_df)
-                                                
-                                                # Plot permutation importance
-                                                fig, ax = plt.subplots(figsize=(10, 6))
-                                                perm_importance_df.head(15).sort_values('importance').plot(
-                                                    kind='barh', x='feature', y='importance', xerr='std', ax=ax)
-                                                plt.title('Permutation Feature Importance (Top 15)')
-                                                plt.tight_layout()
-                                                st.pyplot(fig)
-                                            except Exception as e:
-                                                st.error(f"Error calculating permutation importance: {str(e)}")
-                                                st.code(traceback.format_exc())
+                                                model_for_perm = KerasRegressorWrapper(actual_model)
+                                            else:
+                                                model_for_perm = actual_model
+                                            
+                                            # Calculate permutation importance
+                                            r = permutation_importance(
+                                                model_for_perm, X_test_transformed, y_test,
+                                                n_repeats=10,
+                                                random_state=42,
+                                                scoring='r2'
+                                            )
+                                            
+                                            # Create DataFrame for importance
+                                            perm_importance_df = pd.DataFrame({
+                                                'feature': X.columns,
+                                                'importance': r.importances_mean,
+                                                'std': r.importances_std
+                                            }).sort_values('importance', ascending=False)
+                                            
+                                            # Display permutation importance
+                                            st.subheader("Permutation Feature Importance")
+                                            st.dataframe(perm_importance_df)
+                                            
+                                            # Plot permutation importance
+                                            fig, ax = plt.subplots(figsize=(10, 6))
+                                            perm_importance_df.head(15).sort_values('importance').plot(
+                                                kind='barh', x='feature', y='importance', xerr='std', ax=ax)
+                                            plt.title('Permutation Feature Importance (Top 15)')
+                                            plt.tight_layout()
+                                            st.pyplot(fig)
+                                            
+                                            # Add explanation
+                                            st.markdown("""
+                                            **Permutation Importance** measures how much the model performance decreases when a feature is randomly shuffled.
+                                            Higher values indicate more important features. Features with negative importance can be noise or might interact with other features.
+                                            """)
+                                    except Exception as e:
+                                        st.error(f"Error calculating permutation importance: {str(e)}")
+                                        import traceback
+                                        st.code(traceback.format_exc())
                 except Exception as e:
                     st.error(f"Error evaluating model: {str(e)}")
                     import traceback
