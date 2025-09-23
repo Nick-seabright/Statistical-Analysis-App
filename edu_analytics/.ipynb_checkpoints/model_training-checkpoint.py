@@ -97,11 +97,14 @@ def train_models(
     target_type: str,
     test_size: float = 0.2,
     random_state: int = 42,
-    handle_imbalance: bool = False,
-    imbalance_method: str = 'class_weights'
+    handle_imbalance: bool = False,     # New parameter
+    imbalance_method: str = 'auto',     # New parameter
+    class_weight: Optional[str] = None, # New parameter
+    threshold: float = 0.5              # New parameter for custom threshold
 ) -> Tuple[Dict, pd.DataFrame, Any]:
     """
-    Train multiple machine learning models
+    Train multiple machine learning models with support for imbalanced data
+    
     Parameters:
     -----------
     X : DataFrame
@@ -117,9 +120,15 @@ def train_models(
     random_state : int
         Random seed
     handle_imbalance : bool
-        Whether to handle class imbalance for classification
+        Whether to apply techniques for handling imbalanced data
     imbalance_method : str
-        Method to handle imbalance ('class_weights', 'smote', 'adasyn', 'random_over', 'random_under')
+        Method to use for handling imbalance: 'auto', 'smote', 'adasyn', 
+        'random_over', 'random_under', 'class_weight'
+    class_weight : str
+        How to apply class weights: 'balanced', 'balanced_subsample', or None
+    threshold : float
+        Custom threshold for binary classification predictions
+        
     Returns:
     --------
     Tuple containing:
@@ -129,56 +138,106 @@ def train_models(
     """
     # Split data
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=test_size, random_state=random_state, 
-        stratify=y if target_type == 'categorical' else None
+        X, y, test_size=test_size, random_state=random_state
     )
     
-    # Check for class imbalance and handle it if requested
-    if handle_imbalance and target_type == 'categorical':
-        # Check class distribution
-        class_counts = pd.Series(y_train).value_counts()
-        class_ratio = class_counts.min() / class_counts.max()
-        
-        # Apply resampling if significant imbalance exists
-        if class_ratio < 0.2:  # Less than 20% ratio between minority and majority
-            logger.info(f"Detected class imbalance (ratio: {class_ratio:.3f}). Applying {imbalance_method}.")
+    # Check for class imbalance if target is categorical
+    imbalance_ratio = None
+    class_weights_dict = None
+    if target_type == 'categorical':
+        class_counts = np.bincount(y_train)
+        if len(class_counts) >= 2:
+            minority_count = np.min(class_counts)
+            majority_count = np.max(class_counts)
+            imbalance_ratio = minority_count / majority_count
             
-            # Apply sampling techniques if requested
-            if imbalance_method == 'smote':
-                try:
-                    from imblearn.over_sampling import SMOTE
+            # Log information about class imbalance
+            logger.info(f"Class distribution: {class_counts}")
+            logger.info(f"Imbalance ratio (minority/majority): {imbalance_ratio:.3f}")
+            
+            # If severe imbalance, recommend handling
+            if imbalance_ratio < 0.2 and not handle_imbalance:
+                logger.warning(
+                    f"Severe class imbalance detected (ratio: {imbalance_ratio:.3f}). "
+                    "Consider setting handle_imbalance=True to improve model performance."
+                )
+    
+    # Apply imbalance handling if requested and imbalance exists
+    resampled = False
+    if handle_imbalance and target_type == 'categorical' and imbalance_ratio is not None and imbalance_ratio < 0.5:
+        if imbalance_method == 'auto':
+            # Choose method based on dataset size and imbalance severity
+            n_samples = len(X_train)
+            n_features = X_train.shape[1]
+            
+            if n_samples > 10000:
+                # For very large datasets, use class weights (no memory issues)
+                imbalance_method = 'class_weight'
+            elif imbalance_ratio < 0.01:
+                # For extreme imbalance, use combination of under and over sampling
+                imbalance_method = 'smote'
+            elif n_features > 50:
+                # For high-dimensional data, ADASYN may perform better
+                imbalance_method = 'adasyn'
+            else:
+                # Default to SMOTE for moderate cases
+                imbalance_method = 'smote'
+        
+        logger.info(f"Handling imbalanced data using method: {imbalance_method}")
+        
+        # Calculate class weights for models that support them
+        if class_weight or imbalance_method == 'class_weight':
+            # Calculate class weights
+            classes = np.unique(y_train)
+            weights = compute_class_weight('balanced', classes=classes, y=y_train)
+            class_weights_dict = {cls: weight for cls, weight in zip(classes, weights)}
+            logger.info(f"Computed class weights: {class_weights_dict}")
+        
+        # Apply resampling techniques if selected and available
+        if IMBLEARN_AVAILABLE and imbalance_method in ['smote', 'adasyn', 'random_over', 'random_under']:
+            try:
+                if imbalance_method == 'smote':
+                    # SMOTE: Synthetic Minority Over-sampling Technique
                     sampler = SMOTE(random_state=random_state)
-                    X_train, y_train = sampler.fit_resample(X_train, y_train)
-                    logger.info(f"Applied SMOTE. New class distribution: {pd.Series(y_train).value_counts().to_dict()}")
-                except Exception as e:
-                    logger.error(f"Error applying SMOTE: {str(e)}. Continuing with original data.")
-                    
-            elif imbalance_method == 'adasyn':
-                try:
-                    from imblearn.over_sampling import ADASYN
+                    X_train_resampled, y_train_resampled = sampler.fit_resample(X_train, y_train)
+                    resampled = True
+                
+                elif imbalance_method == 'adasyn':
+                    # ADASYN: Adaptive Synthetic Sampling
                     sampler = ADASYN(random_state=random_state)
-                    X_train, y_train = sampler.fit_resample(X_train, y_train)
-                    logger.info(f"Applied ADASYN. New class distribution: {pd.Series(y_train).value_counts().to_dict()}")
-                except Exception as e:
-                    logger.error(f"Error applying ADASYN: {str(e)}. Continuing with original data.")
-                    
-            elif imbalance_method == 'random_over':
-                try:
-                    from imblearn.over_sampling import RandomOverSampler
+                    X_train_resampled, y_train_resampled = sampler.fit_resample(X_train, y_train)
+                    resampled = True
+                
+                elif imbalance_method == 'random_over':
+                    # Random oversampling of minority class
                     sampler = RandomOverSampler(random_state=random_state)
-                    X_train, y_train = sampler.fit_resample(X_train, y_train)
-                    logger.info(f"Applied Random Oversampling. New class distribution: {pd.Series(y_train).value_counts().to_dict()}")
-                except Exception as e:
-                    logger.error(f"Error applying Random Oversampling: {str(e)}. Continuing with original data.")
-                    
-            elif imbalance_method == 'random_under':
-                try:
-                    from imblearn.under_sampling import RandomUnderSampler
+                    X_train_resampled, y_train_resampled = sampler.fit_resample(X_train, y_train)
+                    resampled = True
+                
+                elif imbalance_method == 'random_under':
+                    # Random undersampling of majority class
                     sampler = RandomUnderSampler(random_state=random_state)
-                    X_train, y_train = sampler.fit_resample(X_train, y_train)
-                    logger.info(f"Applied Random Undersampling. New class distribution: {pd.Series(y_train).value_counts().to_dict()}")
-                except Exception as e:
-                    logger.error(f"Error applying Random Undersampling: {str(e)}. Continuing with original data.")
+                    X_train_resampled, y_train_resampled = sampler.fit_resample(X_train, y_train)
+                    resampled = True
+                
+                if resampled:
+                    # Update class distribution info after resampling
+                    resampled_class_counts = np.bincount(y_train_resampled)
+                    logger.info(f"Class distribution after resampling: {resampled_class_counts}")
+                    
+                    # Use the resampled data for training
+                    X_train = X_train_resampled
+                    y_train = y_train_resampled
+            
+            except Exception as e:
+                logger.error(f"Error applying resampling method {imbalance_method}: {str(e)}")
+                logger.warning("Falling back to original data without resampling.")
+                resampled = False
+        elif imbalance_method not in ['class_weight'] and imbalance_method not in ['smote', 'adasyn', 'random_over', 'random_under']:
+            logger.warning(
+                f"Imbalance method '{imbalance_method}' not recognized or imbalanced-learn not available. "
+                "Using original data without resampling."
+            )
     
     # Dictionary to store trained models
     trained_models = {}
@@ -187,93 +246,86 @@ def train_models(
     # Dictionary to store feature importance
     feature_importance = {}
     
+    # Track if we have specialized imbalanced models
+    has_specialized_models = False
+    
     # Train and evaluate each model
     for model_name, model_type in models:
         logger.info(f"Training {model_name} ({model_type})...")
         try:
             # Initialize model based on type and target type
             if target_type == 'categorical':
-                # Calculate class weights if requested
-                class_weight_dict = None
-                if handle_imbalance and imbalance_method == 'class_weights':
-                    try:
-                        from sklearn.utils.class_weight import compute_class_weight
-                        classes = np.unique(y_train)
-                        class_weights = compute_class_weight('balanced', classes=classes, y=y_train)
-                        class_weight_dict = {cls: weight for cls, weight in zip(classes, class_weights)}
-                        logger.info(f"Computed class weights: {class_weight_dict}")
-                    except Exception as e:
-                        logger.error(f"Error computing class weights: {str(e)}. Continuing without class weights.")
-                        
-                # Initialize models with class weights where supported
                 if model_type == 'rf':
                     model = RandomForestClassifier(
                         n_estimators=100, 
                         random_state=random_state,
-                        class_weight=class_weight_dict
+                        class_weight=class_weight if class_weight else 
+                                  class_weights_dict if imbalance_method == 'class_weight' else None
                     )
                 elif model_type == 'svm':
                     model = SVC(
                         probability=True, 
                         random_state=random_state,
-                        class_weight=class_weight_dict
+                        class_weight=class_weight if class_weight else 
+                                  class_weights_dict if imbalance_method == 'class_weight' else None
                     )
                 elif model_type == 'xgb':
-                    # XGBoost handles class weights differently
-                    model = xgb.XGBClassifier(random_state=random_state)
-                    # If class weights are computed, apply them using scale_pos_weight
-                    if class_weight_dict and len(class_weight_dict) == 2:
-                        # For binary classification, use scale_pos_weight
-                        keys = list(class_weight_dict.keys())
-                        scale_pos_weight = class_weight_dict[1] / class_weight_dict[0]
-                        model.set_params(scale_pos_weight=scale_pos_weight)
-                        logger.info(f"Set XGBoost scale_pos_weight to {scale_pos_weight}")
+                    # XGBoost uses "scale_pos_weight" for imbalanced data
+                    if imbalance_method == 'class_weight' and class_weights_dict and len(class_weights_dict) == 2:
+                        # For binary classification, scale_pos_weight = weight_of_negative_class / weight_of_positive_class
+                        scale_pos_weight = class_weights_dict[0] / class_weights_dict[1]
+                    else:
+                        scale_pos_weight = 1
+                    
+                    model = xgb.XGBClassifier(
+                        random_state=random_state,
+                        scale_pos_weight=scale_pos_weight
+                    )
                 elif model_type == 'nn':
-                    num_classes = len(np.unique(y))
+                    num_classes = len(np.unique(y_train))
                     model = create_neural_network_for_target(
                         target_type='categorical',
-                        input_shape=(X.shape[1],),
-                        num_classes=num_classes
+                        input_shape=(X_train.shape[1],),
+                        num_classes=num_classes,
+                        class_weights=class_weights_dict if imbalance_method == 'class_weight' else None
                     )
-                elif model_type == 'balanced_rf':
-                    try:
-                        from imblearn.ensemble import BalancedRandomForestClassifier
-                        model = BalancedRandomForestClassifier(
-                            n_estimators=100,
-                            random_state=random_state
-                        )
-                    except ImportError:
-                        logger.error("BalancedRandomForestClassifier not available. Please install imbalanced-learn.")
-                        continue
-                elif model_type == 'easy_ensemble':
-                    try:
-                        from imblearn.ensemble import EasyEnsembleClassifier
-                        model = EasyEnsembleClassifier(
-                            n_estimators=10,
-                            random_state=random_state
-                        )
-                    except ImportError:
-                        logger.error("EasyEnsembleClassifier not available. Please install imbalanced-learn.")
-                        continue
+                # Add specialized models for imbalanced data
+                elif model_type == 'balanced_rf' and IMBLEARN_AVAILABLE:
+                    model = BalancedRandomForestClassifier(
+                        n_estimators=100,
+                        random_state=random_state,
+                        class_weight=class_weight
+                    )
+                    has_specialized_models = True
+                elif model_type == 'easy_ensemble' and IMBLEARN_AVAILABLE:
+                    model = EasyEnsembleClassifier(
+                        n_estimators=10,
+                        random_state=random_state
+                    )
+                    has_specialized_models = True
                 else:
-                    logger.warning(f"Unknown model type: {model_type}")
-                    continue
+                    if (model_type in ['balanced_rf', 'easy_ensemble'] and not IMBLEARN_AVAILABLE):
+                        logger.warning(f"Model type {model_type} requires imbalanced-learn package. Skipping.")
+                        continue
+                    else:
+                        logger.warning(f"Unknown model type: {model_type}")
+                        continue
             else:  # 'numeric' or 'time'
                 if model_type == 'rf':
                     model = RandomForestRegressor(n_estimators=100, random_state=random_state)
-                elif model_type == 'svm' or model_type == 'svr':
+                elif model_type in ['svm', 'svr']:
                     model = SVR()
                 elif model_type == 'xgb':
                     model = xgb.XGBRegressor(random_state=random_state)
                 elif model_type == 'nn':
                     model = create_neural_network_for_target(
                         target_type='numeric',
-                        input_shape=(X.shape[1],)
+                        input_shape=(X_train.shape[1],)
                     )
                 else:
                     logger.warning(f"Unknown model type: {model_type}")
                     continue
-                    
+            
             # Train model
             if model_type == 'nn':
                 # For neural networks, use early stopping
@@ -282,6 +334,10 @@ def train_models(
                     patience=10,
                     restore_best_weights=True
                 )
+                
+                # Class weights for Keras models (for imbalanced data)
+                class_weight_keras = class_weights_dict if imbalance_method == 'class_weight' else None
+                
                 # Fit neural network
                 history = model.fit(
                     X_train, y_train,
@@ -289,73 +345,127 @@ def train_models(
                     batch_size=32,
                     validation_split=0.2,
                     callbacks=[early_stopping],
+                    class_weight=class_weight_keras,
                     verbose=0
                 )
             else:
                 # For other models, use standard fit
                 model.fit(X_train, y_train)
-                
+            
             # Store trained model
             trained_models[model_name] = model
             
             # Evaluate model
             if target_type == 'categorical':
-                from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, balanced_accuracy_score
+                from sklearn.metrics import (
+                    accuracy_score, precision_score, recall_score, f1_score,
+                    balanced_accuracy_score, precision_recall_fscore_support
+                )
+                
                 # Make predictions - handle neural networks differently
                 if model_type == 'nn':
                     # For neural networks, convert probabilities to class predictions
-                    if len(np.unique(y)) == 2:  # Binary classification
-                        y_pred = (model.predict(X_test) > 0.5).astype('int32').flatten()
+                    if len(np.unique(y_train)) == 2:  # Binary classification
+                        # Apply custom threshold for binary classification
+                        y_pred_proba = model.predict(X_test)
+                        y_pred = (y_pred_proba > threshold).astype('int32').flatten()
                     else:  # Multi-class classification
                         y_pred = np.argmax(model.predict(X_test), axis=1)
+                elif hasattr(model, 'predict_proba') and len(np.unique(y)) == 2:
+                    # For binary classification models with predict_proba, apply custom threshold
+                    y_pred_proba = model.predict_proba(X_test)[:, 1]
+                    y_pred = (y_pred_proba > threshold).astype(int)
                 else:
                     # Standard models
                     y_pred = model.predict(X_test)
-                    
+                
                 # Calculate metrics
                 accuracy = accuracy_score(y_test, y_pred)
-                precision = precision_score(y_test, y_pred, average='weighted')
-                recall = recall_score(y_test, y_pred, average='weighted')
-                f1 = f1_score(y_test, y_pred, average='weighted')
                 balanced_acc = balanced_accuracy_score(y_test, y_pred)
+                precision = precision_score(y_test, y_pred, average='weighted', zero_division=0)
+                recall = recall_score(y_test, y_pred, average='weighted', zero_division=0)
+                f1 = f1_score(y_test, y_pred, average='weighted', zero_division=0)
+                
+                # Get per-class metrics for binary classification
+                if len(np.unique(y_test)) == 2:
+                    # Calculate per-class precision, recall, and F1
+                    prec_class, rec_class, f1_class, support = precision_recall_fscore_support(
+                        y_test, y_pred, average=None, zero_division=0
+                    )
+                    
+                    # Determine minority class (class with fewer instances)
+                    class_counts = np.bincount(y_test)
+                    minority_class_idx = np.argmin(class_counts)
+                    
+                    # Store minority class metrics
+                    minority_precision = prec_class[minority_class_idx]
+                    minority_recall = rec_class[minority_class_idx]
+                    minority_f1 = f1_class[minority_class_idx]
+                    
+                    # Add to evaluation results
+                    minority_metrics = {
+                        'minority_precision': minority_precision,
+                        'minority_recall': minority_recall,
+                        'minority_f1': minority_f1,
+                        'minority_class': minority_class_idx,
+                        'minority_support': support[minority_class_idx]
+                    }
+                else:
+                    minority_metrics = {}
                 
                 # Store metrics
                 evaluation_results[model_name] = {
                     'Accuracy': accuracy,
-                    'Balanced Accuracy': balanced_acc,  # Added for imbalanced data
+                    'Balanced Accuracy': balanced_acc,
                     'Precision': precision,
                     'Recall': recall,
-                    'F1 Score': f1
+                    'F1 Score': f1,
+                    'Threshold': threshold if len(np.unique(y_test)) == 2 else None,
+                    **minority_metrics  # Add minority class metrics if available
                 }
                 
-                # Calculate per-class metrics for minority class
-                unique_classes = np.unique(y_test)
-                if len(unique_classes) == 2:  # Binary classification
-                    # Find the minority class
-                    class_counts = pd.Series(y_test).value_counts()
-                    minority_class = class_counts.idxmin()
-                    # Calculate metrics for minority class
-                    minority_precision = precision_score(y_test, y_pred, pos_label=minority_class, average='binary')
-                    minority_recall = recall_score(y_test, y_pred, pos_label=minority_class, average='binary')
-                    minority_f1 = f1_score(y_test, y_pred, pos_label=minority_class, average='binary')
-                    # Add to evaluation results
-                    evaluation_results[model_name][f'Minority Precision'] = minority_precision
-                    evaluation_results[model_name][f'Minority Recall'] = minority_recall
-                    evaluation_results[model_name][f'Minority F1'] = minority_f1
+                # If using a custom threshold, also evaluate with the default threshold for comparison
+                if threshold != 0.5 and hasattr(model, 'predict_proba') and len(np.unique(y)) == 2:
+                    # Get predictions with default threshold
+                    y_pred_default = (model.predict_proba(X_test)[:, 1] > 0.5).astype(int)
+                    
+                    # Calculate metrics with default threshold
+                    acc_default = accuracy_score(y_test, y_pred_default)
+                    bal_acc_default = balanced_accuracy_score(y_test, y_pred_default)
+                    prec_default = precision_score(y_test, y_pred_default, average='weighted', zero_division=0)
+                    rec_default = recall_score(y_test, y_pred_default, average='weighted', zero_division=0)
+                    f1_default = f1_score(y_test, y_pred_default, average='weighted', zero_division=0)
+                    
+                    # Add comparison to evaluation results
+                    evaluation_results[model_name]['Default Threshold Accuracy'] = acc_default
+                    evaluation_results[model_name]['Default Threshold F1'] = f1_default
                 
                 # Cross-validation score (skip for neural networks)
                 if model_type != 'nn':
-                    cv_scores = cross_val_score(model, X, y, cv=5)
-                    evaluation_results[model_name]['CV Accuracy'] = cv_scores.mean()
-                    evaluation_results[model_name]['CV Std'] = cv_scores.std()
+                    try:
+                        # Use balanced accuracy for imbalanced data
+                        if imbalance_ratio and imbalance_ratio < 0.2:
+                            scoring = 'balanced_accuracy'
+                        else:
+                            scoring = 'accuracy'
+                            
+                        cv_scores = cross_val_score(model, X, y, cv=5, scoring=scoring)
+                        evaluation_results[model_name]['CV Score'] = cv_scores.mean()
+                        evaluation_results[model_name]['CV Std'] = cv_scores.std()
+                    except Exception as cv_error:
+                        logger.warning(f"Cross-validation failed: {str(cv_error)}")
+                        evaluation_results[model_name]['CV Score'] = np.nan
+                        evaluation_results[model_name]['CV Std'] = np.nan
+                
             else:  # 'numeric' or 'time'
                 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+                
                 # Make predictions - handle neural networks consistently
                 if model_type == 'nn':
                     y_pred = model.predict(X_test).flatten()  # Flatten for consistent dimensions
                 else:
                     y_pred = model.predict(X_test)
-                    
+                
                 # Calculate metrics
                 mse = mean_squared_error(y_test, y_pred)
                 rmse = np.sqrt(mse)
@@ -372,10 +482,15 @@ def train_models(
                 
                 # Cross-validation score (skip for neural networks)
                 if model_type != 'nn':
-                    cv_scores = cross_val_score(model, X, y, cv=5, scoring='r2')
-                    evaluation_results[model_name]['CV R²'] = cv_scores.mean()
-                    evaluation_results[model_name]['CV Std'] = cv_scores.std()
-                    
+                    try:
+                        cv_scores = cross_val_score(model, X, y, cv=5, scoring='r2')
+                        evaluation_results[model_name]['CV R²'] = cv_scores.mean()
+                        evaluation_results[model_name]['CV Std'] = cv_scores.std()
+                    except Exception as cv_error:
+                        logger.warning(f"Cross-validation failed: {str(cv_error)}")
+                        evaluation_results[model_name]['CV R²'] = np.nan
+                        evaluation_results[model_name]['CV Std'] = np.nan
+            
             # Get feature importance if available
             if hasattr(model, 'feature_importances_'):
                 # For Random Forest and XGBoost
@@ -386,109 +501,76 @@ def train_models(
                     'importance': importances
                 }).sort_values('importance', ascending=False)
                 feature_importance[model_name] = importance_df
-            elif model_type in ['svm', 'svr']:
-                # For SVM models, calculate permutation importance instead
+            
+            # Add permutation importance for models without built-in feature importance
+            elif target_type == 'categorical' and model_type not in ['nn']:
                 try:
                     from sklearn.inspection import permutation_importance
-                    # Use a small sample for efficiency
-                    sample_size = min(500, X_test.shape[0])
-                    if sample_size < X_test.shape[0]:
-                        X_sample = X_test.iloc[:sample_size]
-                        y_sample = y_test.iloc[:sample_size]
-                    else:
-                        X_sample = X_test
-                        y_sample = y_test
-                        
-                    perm_importance = permutation_importance(
-                        model, X_sample, y_sample, n_repeats=5, random_state=random_state, n_jobs=-1
-                    )
-                    # Create DataFrame with permutation importance
-                    importance_df = pd.DataFrame({
-                        'feature': X.columns,
-                        'importance': perm_importance.importances_mean
-                    }).sort_values('importance', ascending=False)
-                    feature_importance[model_name] = importance_df
-                    logger.info(f"Calculated permutation importance for {model_name}")
-                except Exception as e:
-                    logger.warning(f"Could not calculate permutation importance for {model_name}: {str(e)}")
-                    # Create a dummy importance DataFrame to avoid errors
-                    importance_df = pd.DataFrame({
-                        'feature': X.columns,
-                        'importance': np.zeros(len(X.columns))
-                    })
-                    feature_importance[model_name] = importance_df
-            # For neural networks, try permutation importance if computational resources allow
-            elif model_type == 'nn':
-                try:
-                    # For neural networks, we need a wrapper class for sklearn compatibility
-                    class KerasWrapper:
-                        def __init__(self, model, binary=False):
-                            self.model = model
-                            self.binary = binary
-                            
-                        def predict(self, X):
-                            if self.binary:
-                                return (self.model.predict(X) > 0.5).astype('int32').flatten()
-                            elif target_type == 'categorical':
-                                return np.argmax(self.model.predict(X), axis=1)
-                            else:
-                                return self.model.predict(X).flatten()
                     
-                    # Limit sample size for computational efficiency
-                    sample_size = min(200, X_test.shape[0])
-                    if sample_size < X_test.shape[0]:
-                        X_sample = X_test.iloc[:sample_size]
-                        y_sample = y_test.iloc[:sample_size]
+                    # Determine appropriate scoring metric based on class balance
+                    if imbalance_ratio and imbalance_ratio < 0.2:
+                        scoring = 'f1'  # Better for imbalanced data
                     else:
-                        X_sample = X_test
-                        y_sample = y_test
-                    
-                    # Create wrapped model
-                    is_binary = target_type == 'categorical' and len(np.unique(y)) == 2
-                    wrapped_model = KerasWrapper(model, binary=is_binary)
+                        scoring = 'accuracy'
                     
                     # Calculate permutation importance
-                    from sklearn.inspection import permutation_importance
                     perm_importance = permutation_importance(
-                        wrapped_model, X_sample, y_sample, 
-                        n_repeats=3,  # Fewer repeats for neural networks due to computational cost
-                        random_state=random_state,
-                        n_jobs=-1
+                        model, X_test, y_test, n_repeats=5, random_state=random_state, scoring=scoring
                     )
                     
-                    # Create DataFrame with permutation importance
+                    # Create DataFrame
                     importance_df = pd.DataFrame({
                         'feature': X.columns,
-                        'importance': perm_importance.importances_mean
+                        'importance': perm_importance.importances_mean,
+                        'std': perm_importance.importances_std
                     }).sort_values('importance', ascending=False)
-                    feature_importance[model_name] = importance_df
-                    logger.info(f"Calculated permutation importance for neural network")
-                except Exception as e:
-                    logger.warning(f"Could not calculate permutation importance for neural network: {str(e)}")
-                    # Create a dummy importance DataFrame
-                    importance_df = pd.DataFrame({
-                        'feature': X.columns,
-                        'importance': np.zeros(len(X.columns))
-                    })
-                    feature_importance[model_name] = importance_df
                     
+                    feature_importance[model_name] = importance_df
+                    logger.info(f"Added permutation importance for {model_name}")
+                except Exception as e:
+                    logger.warning(f"Could not calculate permutation importance: {str(e)}")
+            
             logger.info(f"Finished training {model_name}")
+            
+            # Log additional info for imbalanced data
+            if target_type == 'categorical' and len(np.unique(y_test)) == 2:
+                minority_class_idx = np.argmin(np.bincount(y_test))
+                logger.info(f"Minority class ({minority_class_idx}) metrics:")
+                if 'minority_precision' in evaluation_results[model_name]:
+                    logger.info(f"  Precision: {evaluation_results[model_name]['minority_precision']:.4f}")
+                    logger.info(f"  Recall: {evaluation_results[model_name]['minority_recall']:.4f}")
+                    logger.info(f"  F1: {evaluation_results[model_name]['minority_f1']:.4f}")
+                
         except Exception as e:
             logger.error(f"Error training {model_name}: {str(e)}")
             import traceback
             logger.error(traceback.format_exc())
             continue
-            
+    
+    # Log summary of imbalanced data handling
+    if target_type == 'categorical' and imbalance_ratio and imbalance_ratio < 0.5:
+        logger.info(f"Imbalanced data summary:")
+        logger.info(f"  Imbalance ratio: {imbalance_ratio:.3f}")
+        logger.info(f"  Handling method: {imbalance_method}")
+        if resampled:
+            logger.info(f"  Applied resampling: Yes")
+            before_counts = np.bincount(y)
+            after_counts = np.bincount(y_train)
+            logger.info(f"  Class counts before: {before_counts}")
+            logger.info(f"  Class counts after: {after_counts}")
+        else:
+            logger.info(f"  Applied resampling: No")
+        if class_weights_dict:
+            logger.info(f"  Applied class weights: {class_weights_dict}")
+        if threshold != 0.5:
+            logger.info(f"  Custom threshold: {threshold}")
+    
     # Convert evaluation results to DataFrame
     evaluation_df = pd.DataFrame(evaluation_results).T
     
-    # If no models were successfully trained, provide empty results
-    if not trained_models:
-        logger.warning("No models were successfully trained")
-        return {}, pd.DataFrame(), {}
-        
+    # Return the trained models, evaluation results, and feature importance
     return trained_models, evaluation_df, feature_importance
-                    
+
 def hyperparameter_tuning(
     X: pd.DataFrame,
     y: pd.Series,
@@ -890,47 +972,3 @@ def load_model(filename: str) -> Any:
         model = joblib.load(filename)
     logger.info(f"Model loaded from {filename}")
     return model
-
-# In edu_analytics/model_evaluation.py
-def plot_feature_importance(
-    model: Any,
-    feature_names: List[str],
-    top_n: int = 15,
-    title: str = "Feature Importance"
-) -> Optional[plt.Figure]:
-    """
-    Plot feature importance for models
-    """
-    if hasattr(model, 'feature_importances_'):
-        # Use built-in feature importance
-        importances = model.feature_importances_
-        # Create feature importance DataFrame
-        importance_df = pd.DataFrame({
-            'Feature': feature_names,
-            'Importance': importances
-        }).sort_values('Importance', ascending=False)
-    else:
-        # Try calculating permutation importance
-        try:
-            from sklearn.inspection import permutation_importance
-            # Use a small subset for performance reasons
-            X_sample = X_test[:min(500, len(X_test))]
-            y_sample = y_test[:min(500, len(y_test))]
-            
-            perm_importance = permutation_importance(
-                model, X_sample, y_sample, n_repeats=5, random_state=42
-            )
-            importance_df = pd.DataFrame({
-                'Feature': feature_names,
-                'Importance': perm_importance.importances_mean
-            }).sort_values('Importance', ascending=False)
-        except Exception as e:
-            logger.warning(f"Could not calculate feature importance: {str(e)}")
-            return None
-    
-    # Create the plot
-    fig, ax = plt.subplots(figsize=(10, 8))
-    top_features = importance_df.head(top_n)
-    sns.barplot(x='Importance', y='Feature', data=top_features, palette='viridis')
-    plt.title(title)
-    return fig
