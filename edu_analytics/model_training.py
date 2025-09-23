@@ -264,34 +264,39 @@ def train_models(
                     )
                 elif model_type == 'svm':
                     try:
-                        # Check if we have any missing values
-                        if X_train.isna().sum().sum() > 0:
-                            logger.warning("SVM cannot handle missing values. Filling missing values with mean.")
-                            # Get the column means only for numeric columns
-                            numeric_cols = X_train.select_dtypes(include=['number']).columns
-                            column_means = X_train[numeric_cols].mean()
-                            # Fill missing values in numeric columns
-                            X_train = X_train.copy()
-                            for col in numeric_cols:
-                                X_train[col] = X_train[col].fillna(column_means[col])
+                        logger.info("Creating SVM model with robust preprocessing")
+                        # Check for any NaN values and handle them
+                        X_train_svm = X_train.copy()
+                        if isinstance(X_train_svm, pd.DataFrame) and X_train_svm.isna().any().any():
+                            logger.warning("NaN values detected in training data for SVM. Filling with mean values.")
+                            X_train_svm = X_train_svm.fillna(X_train_svm.mean())
                         
-                        # Create SVM with more robust parameters
+                        # For SVM, ensure data is scaled appropriately
+                        from sklearn.preprocessing import StandardScaler
+                        svm_scaler = StandardScaler()
+                        X_train_svm = svm_scaler.fit_transform(X_train_svm)
+                        
+                        # Create the model with more robust parameters
                         model = SVC(
                             probability=True,
                             random_state=random_state,
                             class_weight=class_weight if class_weight else
                                       class_weights_dict if imbalance_method == 'class_weight' else None,
-                            C=1.0,  # Regularization parameter
+                            C=1.0,          # Regularization parameter
                             gamma='scale',  # Kernel coefficient
-                            # Add max_iter to ensure convergence
-                            max_iter=1000
+                            kernel='rbf'    # Default kernel
                         )
-                        logger.info("Created SVM model with robust parameters")
+                        # Store the SVM-specific scaler
+                        model_metadata = {'svm_scaler': svm_scaler}
+                        
+                        # Train the model
+                        model.fit(X_train_svm, y_train)
+                        
+                        # Add metadata to model dictionary to use during prediction
+                        model = (model, model_metadata)
                     except Exception as e:
-                        logger.error(f"Error configuring SVM: {str(e)}")
-                        # Fall back to a simpler SVM configuration
-                        model = SVC(probability=True, random_state=random_state)
-                        logger.info("Falling back to basic SVM configuration")
+                        logger.error(f"Error creating SVM model: {str(e)}")
+                        raise
                 elif model_type == 'xgb':
                     # XGBoost uses "scale_pos_weight" for imbalanced data
                     if imbalance_method == 'class_weight' and class_weights_dict and len(class_weights_dict) == 2:
@@ -486,7 +491,15 @@ def train_models(
                 # Make predictions - handle neural networks consistently
                 if model_type == 'nn':
                     y_pred = model.predict(X_test).flatten()  # Flatten for consistent dimensions
+                elif model_type == 'svm' and isinstance(model, tuple):
+                    # Unpack model and metadata
+                    svm_model, metadata = model
+                    # Apply the SVM-specific scaler
+                    X_test_svm = metadata['svm_scaler'].transform(X_test)
+                    # Make prediction
+                    y_pred = svm_model.predict(X_test_svm)
                 else:
+                    # Regular prediction for other models
                     y_pred = model.predict(X_test)
                 
                 # Calculate metrics
