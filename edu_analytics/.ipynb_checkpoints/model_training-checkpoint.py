@@ -263,12 +263,35 @@ def train_models(
                                   class_weights_dict if imbalance_method == 'class_weight' else None
                     )
                 elif model_type == 'svm':
-                    model = SVC(
-                        probability=True, 
-                        random_state=random_state,
-                        class_weight=class_weight if class_weight else 
-                                  class_weights_dict if imbalance_method == 'class_weight' else None
-                    )
+                    try:
+                        # Check if we have any missing values
+                        if X_train.isna().sum().sum() > 0:
+                            logger.warning("SVM cannot handle missing values. Filling missing values with mean.")
+                            # Get the column means only for numeric columns
+                            numeric_cols = X_train.select_dtypes(include=['number']).columns
+                            column_means = X_train[numeric_cols].mean()
+                            # Fill missing values in numeric columns
+                            X_train = X_train.copy()
+                            for col in numeric_cols:
+                                X_train[col] = X_train[col].fillna(column_means[col])
+                        
+                        # Create SVM with more robust parameters
+                        model = SVC(
+                            probability=True,
+                            random_state=random_state,
+                            class_weight=class_weight if class_weight else
+                                      class_weights_dict if imbalance_method == 'class_weight' else None,
+                            C=1.0,  # Regularization parameter
+                            gamma='scale',  # Kernel coefficient
+                            # Add max_iter to ensure convergence
+                            max_iter=1000
+                        )
+                        logger.info("Created SVM model with robust parameters")
+                    except Exception as e:
+                        logger.error(f"Error configuring SVM: {str(e)}")
+                        # Fall back to a simpler SVM configuration
+                        model = SVC(probability=True, random_state=random_state)
+                        logger.info("Falling back to basic SVM configuration")
                 elif model_type == 'xgb':
                     # XGBoost uses "scale_pos_weight" for imbalanced data
                     if imbalance_method == 'class_weight' and class_weights_dict and len(class_weights_dict) == 2:

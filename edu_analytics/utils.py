@@ -994,3 +994,252 @@ def plot_imbalance_summary(y):
     plt.tight_layout()
     plt.subplots_adjust(bottom=0.15)
     return fig
+
+# Add these functions to edu_analytics/utils.py
+
+def create_neural_network_wrapper(model, threshold=0.5):
+    """
+    Create a wrapper class for neural network models that works well with Streamlit
+    
+    Parameters:
+    -----------
+    model : tf.keras.Model
+        The trained neural network model
+    threshold : float
+        Decision threshold for binary classification
+        
+    Returns:
+    --------
+    object : A model wrapper that can be safely stored in session state
+    """
+    class NeuralNetworkWrapper:
+        def __init__(self, model, threshold=0.5):
+            self.model = model
+            self.threshold = threshold
+            # Store model architecture and weights separately to avoid TF session issues
+            self.model_config = model.get_config() if hasattr(model, 'get_config') else None
+            self.weights = model.get_weights()
+            self.is_binary = False
+            
+            # Try to determine if it's a binary classifier
+            try:
+                output_shape = model.layers[-1].output_shape
+                if isinstance(output_shape, tuple) and output_shape[-1] == 1:
+                    self.is_binary = True
+                elif hasattr(model, 'output_shape') and model.output_shape[-1] == 1:
+                    self.is_binary = True
+            except:
+                # If we can't determine, assume it's not binary
+                pass
+        
+        def predict(self, X):
+            """Make predictions with threshold application"""
+            raw_preds = self.model.predict(X)
+            
+            # Handle binary classification
+            if self.is_binary or len(raw_preds.shape) == 1 or raw_preds.shape[1] == 1:
+                # Ensure we have the right shape
+                if len(raw_preds.shape) > 1:
+                    raw_preds = raw_preds.flatten()
+                return (raw_preds > self.threshold).astype(int)
+            
+            # Handle multiclass
+            return np.argmax(raw_preds, axis=1)
+        
+        def predict_proba(self, X):
+            """Return class probabilities"""
+            raw_preds = self.model.predict(X)
+            
+            # For binary classification, return probabilities for both classes
+            if self.is_binary or len(raw_preds.shape) == 1 or raw_preds.shape[1] == 1:
+                if len(raw_preds.shape) > 1:
+                    raw_preds = raw_preds.flatten()
+                return np.vstack([1 - raw_preds, raw_preds]).T
+            
+            # For multiclass, return raw predictions
+            return raw_preds
+        
+        def evaluate(self, X, y):
+            """Evaluate model performance"""
+            return self.model.evaluate(X, y, verbose=0)
+        
+        def set_threshold(self, new_threshold):
+            """Update the decision threshold"""
+            self.threshold = new_threshold
+            return self
+    
+    return NeuralNetworkWrapper(model, threshold)
+
+
+def calculate_permutation_importance_safe(model, X, y, n_repeats=5, max_samples=1000, random_state=42):
+    """
+    Calculate permutation importance safely for any model type including neural networks
+    
+    Parameters:
+    -----------
+    model : model object
+        Trained model with predict method
+    X : DataFrame
+        Feature data
+    y : Series or array
+        Target data
+    n_repeats : int
+        Number of times to permute each feature
+    max_samples : int
+        Maximum number of samples to use (to prevent memory issues)
+    random_state : int
+        Random seed
+        
+    Returns:
+    --------
+    Dict : Dictionary with importance results
+    """
+    try:
+        from sklearn.inspection import permutation_importance
+        
+        # Limit sample size to prevent memory issues
+        if len(X) > max_samples:
+            # Randomly sample data
+            idx = np.random.RandomState(random_state).choice(
+                np.arange(len(X)), size=max_samples, replace=False)
+            X_sample = X.iloc[idx] if hasattr(X, 'iloc') else X[idx]
+            y_sample = y.iloc[idx] if hasattr(y, 'iloc') else y[idx]
+        else:
+            X_sample = X
+            y_sample = y
+            
+        # For neural network models, create a simple wrapper
+        if 'tensorflow' in str(type(model)).lower() or 'keras' in str(type(model)).lower():
+            class SimpleModelWrapper:
+                def __init__(self, model):
+                    self.model = model
+                
+                def predict(self, X):
+                    preds = self.model.predict(X)
+                    # Handle binary classification
+                    if len(preds.shape) == 1 or preds.shape[1] == 1:
+                        return (preds > 0.5).astype(int).flatten()
+                    # Handle multi-class
+                    return np.argmax(preds, axis=1)
+                    
+                def fit(self, *args, **kwargs):
+                    # Dummy method for sklearn compatibility
+                    return self
+            
+            model_for_perm = SimpleModelWrapper(model)
+        else:
+            model_for_perm = model
+            
+        # Calculate permutation importance with appropriate scoring
+        if len(np.unique(y_sample)) <= 2:  # Binary classification
+            scoring = 'balanced_accuracy'
+        elif len(np.unique(y_sample)) > 2:  # Multi-class classification
+            scoring = 'balanced_accuracy'
+        else:  # Regression
+            scoring = 'neg_mean_squared_error'
+            
+        # Run permutation importance calculation
+        result = permutation_importance(
+            model_for_perm, X_sample, y_sample,
+            n_repeats=n_repeats,
+            random_state=random_state,
+            scoring=scoring
+        )
+        
+        # Create a dictionary of results
+        importance_results = {
+            'importances_mean': result.importances_mean,
+            'importances_std': result.importances_std,
+            'feature_names': X.columns.tolist(),
+            'success': True
+        }
+        
+        return importance_results
+        
+    except Exception as e:
+        # Return error information if calculation fails
+        import traceback
+        return {
+            'success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }
+
+
+def evaluate_model_with_threshold(model, X_test, y_test, threshold=0.5):
+    """
+    Evaluate a model with a custom threshold for binary classification
+    
+    Parameters:
+    -----------
+    model : model object
+        Trained model with predict_proba method
+    X_test : DataFrame
+        Test feature data
+    y_test : Series or array
+        Test target data
+    threshold : float
+        Decision threshold
+        
+    Returns:
+    --------
+    Dict : Dictionary with evaluation metrics
+    """
+    import numpy as np
+    from sklearn.metrics import (
+        accuracy_score, precision_score, recall_score, f1_score,
+        confusion_matrix, roc_auc_score, balanced_accuracy_score
+    )
+    
+    # Get probabilities
+    if hasattr(model, 'predict_proba'):
+        y_proba = model.predict_proba(X_test)
+        # Handle different formats of probability outputs
+        if y_proba.shape[1] == 2:
+            # Standard scikit-learn format with probabilities for both classes
+            y_prob_positive = y_proba[:, 1]
+        else:
+            # Single column of probabilities
+            y_prob_positive = y_proba.flatten()
+    else:
+        # For models without predict_proba, try to get raw predictions
+        try:
+            y_prob_positive = model.predict(X_test).flatten()
+        except:
+            # If that fails too, return error
+            return {'error': 'Model does not support probability predictions'}
+    
+    # Apply threshold
+    y_pred = (y_prob_positive >= threshold).astype(int)
+    
+    # Calculate metrics
+    try:
+        accuracy = accuracy_score(y_test, y_pred)
+        balanced_acc = balanced_accuracy_score(y_test, y_pred)
+        precision = precision_score(y_test, y_pred, zero_division=0)
+        recall = recall_score(y_test, y_pred, zero_division=0)
+        f1 = f1_score(y_test, y_pred, zero_division=0)
+        cm = confusion_matrix(y_test, y_pred)
+        
+        try:
+            roc_auc = roc_auc_score(y_test, y_prob_positive)
+        except:
+            roc_auc = None
+        
+        # Return all metrics
+        return {
+            'accuracy': accuracy,
+            'balanced_accuracy': balanced_acc,
+            'precision': precision,
+            'recall': recall,
+            'f1': f1,
+            'confusion_matrix': cm,
+            'roc_auc': roc_auc,
+            'threshold': threshold,
+            'success': True
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'error': str(e)
+        }
