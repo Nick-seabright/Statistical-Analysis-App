@@ -99,7 +99,7 @@ def train_models(
     random_state: int = 42,
     handle_imbalance: bool = False,
     imbalance_method: str = 'class_weights'
-) -> Tuple[Dict, pd.DataFrame, Any]:
+) -> Tuple[Dict, pd.DataFrame, Dict]:
     """
     Train multiple machine learning models
     Parameters:
