@@ -1350,38 +1350,43 @@ def show_model_training():
                             )
                             
                             if st.button("Apply New Threshold", key="apply_threshold"):
-                                # Recalculate metrics with new threshold
-                                y_pred_new = (y_pred_proba > new_threshold).astype(int)
-                                accuracy_new = accuracy_score(y_test, y_pred_new)
-                                precision_new = precision_score(y_test, y_pred_new)
-                                recall_new = recall_score(y_test, y_pred_new)
-                                f1_new = f1_score(y_test, y_pred_new)
-                                
-                                # Show new metrics
-                                st.success(f"Applied threshold: {new_threshold:.2f}")
-                                col1, col2, col3, col4 = st.columns(4)
-                                col1.metric("Accuracy", f"{accuracy_new:.4f}", 
-                                         f"{accuracy_new - accuracy:.4f}")
-                                col2.metric("Precision", f"{precision_new:.4f}", 
-                                         f"{precision_new - precision:.4f}")
-                                col3.metric("Recall", f"{recall_new:.4f}", 
-                                         f"{recall_new - recall:.4f}")
-                                col4.metric("F1 Score", f"{f1_new:.4f}", 
-                                         f"{f1_new - f1:.4f}")
-                                
-                                # Update confusion matrix
-                                cm_new = confusion_matrix(y_test, y_pred_new)
-                                fig4, ax4 = plt.subplots(figsize=(8, 6))
-                                if target_mapping:
-                                    sns.heatmap(cm_new, annot=True, fmt='d', ax=ax4, 
-                                              xticklabels=class_names, yticklabels=class_names,
-                                              cmap='Blues')
+                                # Check if necessary data is in session state
+                                if 'y_test' in st.session_state and 'y_pred_proba' in st.session_state:
+                                    # Recalculate metrics with new threshold
+                                    y_pred_new = (st.session_state.y_pred_proba > new_threshold).astype(int)
+                                    accuracy_new = accuracy_score(st.session_state.y_test, y_pred_new)
+                                    precision_new = precision_score(st.session_state.y_test, y_pred_new)
+                                    recall_new = recall_score(st.session_state.y_test, y_pred_new)
+                                    f1_new = f1_score(st.session_state.y_test, y_pred_new)
+                                    
+                                    # Show new metrics
+                                    st.success(f"Applied threshold: {new_threshold:.2f}")
+                                    col1, col2, col3, col4 = st.columns(4)
+                                    col1.metric("Accuracy", f"{accuracy_new:.4f}",
+                                             f"{accuracy_new - accuracy:.4f}")
+                                    col2.metric("Precision", f"{precision_new:.4f}",
+                                             f"{precision_new - precision:.4f}")
+                                    col3.metric("Recall", f"{recall_new:.4f}",
+                                             f"{recall_new - recall:.4f}")
+                                    col4.metric("F1 Score", f"{f1_new:.4f}",
+                                             f"{f1_new - f1:.4f}")
+                                    
+                                    # Update confusion matrix
+                                    cm_new = confusion_matrix(st.session_state.y_test, y_pred_new)
+                                    fig4, ax4 = plt.subplots(figsize=(8, 6))
+                                    class_names = st.session_state.class_names
+                                    if class_names:
+                                        sns.heatmap(cm_new, annot=True, fmt='d', ax=ax4,
+                                                   xticklabels=class_names, yticklabels=class_names,
+                                                   cmap='Blues')
+                                    else:
+                                        sns.heatmap(cm_new, annot=True, fmt='d', ax=ax4, cmap='Blues')
+                                    plt.title(f'Confusion Matrix (Threshold = {new_threshold:.2f})')
+                                    plt.ylabel('True Label')
+                                    plt.xlabel('Predicted Label')
+                                    st.pyplot(fig4)
                                 else:
-                                    sns.heatmap(cm_new, annot=True, fmt='d', ax=ax4, cmap='Blues')
-                                plt.title(f'Confusion Matrix (Threshold = {new_threshold:.2f})')
-                                plt.ylabel('True Label')
-                                plt.xlabel('Predicted Label')
-                                st.pyplot(fig4)
+                                    st.error("Required data not found. Please evaluate the model first.")
                         
                         # Feature importance
                         st.markdown("### Feature Importance")
@@ -1410,60 +1415,65 @@ def show_model_training():
                             st.info("Feature importance is not directly available for this model type. "
                                   "Consider using permutation importance for model interpretation.")
                             
-                            if st.button("Calculate Permutation Importance"):
+                            if st.button("Calculate Permutation Importance", key="perm_imp_cat"):
                                 with st.spinner("Calculating permutation importance..."):
                                     try:
                                         from sklearn.inspection import permutation_importance
-                                        
-                                        # Create wrapper for neural network if needed
-                                        if is_neural_network:
-                                            class ModelWrapper:
-                                                def __init__(self, model):
-                                                    self.model = model
-                                                
-                                                def predict(self, X):
-                                                    if len(np.unique(y)) == 2:
-                                                        return (self.model.predict(X) > 0.5).astype(int).flatten()
-                                                    else:
-                                                        return np.argmax(self.model.predict(X), axis=1)
+                                        # Check if we have the necessary data in session state
+                                        if all(k in st.session_state for k in ['current_model_cat', 'X_test_cat', 'y_test_cat', 'feature_columns_cat']):
+                                            # Get data from session state
+                                            model = st.session_state.current_model_cat
+                                            X_test = st.session_state.X_test_cat
+                                            y_test = st.session_state.y_test_cat
+                                            is_neural_network = st.session_state.is_neural_network_cat
+                                            n_classes = st.session_state.n_classes_cat
                                             
-                                            model_for_perm = ModelWrapper(model)
-                                        else:
-                                            model_for_perm = model
-                                        
-                                        # Calculate permutation importance - using balanced accuracy for imbalanced data
-                                        if n_classes == 2:
+                                            # Create wrapper for neural network if needed
+                                            if is_neural_network:
+                                                class ModelWrapper:
+                                                    def __init__(self, model):
+                                                        self.model = model
+                                                    def predict(self, X):
+                                                        if n_classes == 2:
+                                                            return (self.model.predict(X) > 0.5).astype(int).flatten()
+                                                        else:
+                                                            return np.argmax(self.model.predict(X), axis=1)
+                                                model_for_perm = ModelWrapper(model)
+                                            else:
+                                                model_for_perm = model
+                                                
+                                            # Calculate permutation importance - using balanced accuracy for imbalanced data
                                             scoring = 'balanced_accuracy'
+                                            r = permutation_importance(
+                                                model_for_perm, X_test, y_test,
+                                                n_repeats=10,
+                                                random_state=42,
+                                                scoring=scoring
+                                            )
+                                            
+                                            # Create DataFrame for importance
+                                            perm_importance_df = pd.DataFrame({
+                                                'feature': st.session_state.feature_columns_cat,
+                                                'importance': r.importances_mean,
+                                                'std': r.importances_std
+                                            }).sort_values('importance', ascending=False)
+                                            
+                                            # Display permutation importance
+                                            st.dataframe(perm_importance_df)
+                                            
+                                            # Plot permutation importance
+                                            fig, ax = plt.subplots(figsize=(10, 6))
+                                            perm_importance_df.head(15).sort_values('importance').plot(
+                                                kind='barh', x='feature', y='importance', xerr='std', ax=ax)
+                                            plt.title('Permutation Feature Importance (Top 15)')
+                                            plt.tight_layout()
+                                            st.pyplot(fig)
                                         else:
-                                            scoring = 'balanced_accuracy' if class_distribution.min() < 0.2 else 'accuracy'
-                                        
-                                        r = permutation_importance(
-                                            model_for_perm, X_test, y_test, 
-                                            n_repeats=10, 
-                                            random_state=42, 
-                                            scoring=scoring
-                                        )
-                                        
-                                        # Create DataFrame for importance
-                                        perm_importance_df = pd.DataFrame({
-                                            'feature': X.columns,
-                                            'importance': r.importances_mean,
-                                            'std': r.importances_std
-                                        }).sort_values('importance', ascending=False)
-                                        
-                                        # Display permutation importance
-                                        st.dataframe(perm_importance_df)
-                                        
-                                        # Plot permutation importance
-                                        fig, ax = plt.subplots(figsize=(10, 6))
-                                        perm_importance_df.head(15).sort_values('importance').plot(
-                                            kind='barh', x='feature', y='importance', xerr='std', ax=ax)
-                                        plt.title('Permutation Feature Importance (Top 15)')
-                                        plt.tight_layout()
-                                        st.pyplot(fig)
-                                        
+                                            st.error("Required data not found. Please evaluate the model first.")
                                     except Exception as e:
                                         st.error(f"Error calculating permutation importance: {str(e)}")
+                                        import traceback
+                                        st.code(traceback.format_exc())
                     else:  # Regression
                         # Regression evaluation
                         from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
@@ -1472,6 +1482,22 @@ def show_model_training():
                             y_pred = model.predict(X_test).flatten()
                         else:
                             y_pred = model.predict(X_test)
+
+                        # Save evaluation data in session state for permutation importance
+                        st.session_state.current_model_reg = model
+                        st.session_state.X_test_reg = X_test
+                        st.session_state.y_test_reg = y_test
+                        st.session_state.feature_columns_reg = X.columns
+                        st.session_state.is_neural_network_reg = is_neural_network
+                            
+                        # Save evaluation data in session state for permutation importance
+                        st.session_state.current_model_cat = model
+                        st.session_state.X_test_cat = X_test
+                        st.session_state.y_test_cat = y_test
+                        st.session_state.feature_columns_cat = X.columns
+                        st.session_state.is_neural_network_cat = is_neural_network
+                        st.session_state.n_classes_cat = n_classes
+                        
                         # Calculate metrics
                         mse = mean_squared_error(y_test, y_pred)
                         rmse = np.sqrt(mse)
@@ -1518,43 +1544,60 @@ def show_model_training():
                             st.info("Feature importance is not directly available for this model type. "
                                    "Consider using permutation importance for model interpretation.")
                             
-                            if st.button("Calculate Permutation Importance"):
+                            if st.button("Calculate Permutation Importance", key="perm_imp_reg"):
                                 with st.spinner("Calculating permutation importance..."):
                                     try:
-                                        from sklearn.inspection import permutation_importance
-                                        # Create wrapper for neural network models
-                                        if is_neural_network:
-                                            class KerasRegressorWrapper:
-                                                def __init__(self, model):
-                                                    self.model = model
-                                                def predict(self, X):
-                                                    return self.model.predict(X).flatten()
-                                            model_for_perm = KerasRegressorWrapper(model)
+                                        # Check if we have the necessary data in session state
+                                        if all(k in st.session_state for k in ['current_model_reg', 'X_test_reg', 'y_test_reg', 'feature_columns_reg']):
+                                            from sklearn.inspection import permutation_importance
+                                            
+                                            # Get data from session state
+                                            model = st.session_state.current_model_reg
+                                            X_test = st.session_state.X_test_reg
+                                            y_test = st.session_state.y_test_reg
+                                            is_neural_network = st.session_state.is_neural_network_reg
+                                            
+                                            # Create wrapper for neural network models if needed
+                                            if is_neural_network:
+                                                class KerasRegressorWrapper:
+                                                    def __init__(self, model):
+                                                        self.model = model
+                                                    def predict(self, X):
+                                                        return self.model.predict(X).flatten()
+                                                model_for_perm = KerasRegressorWrapper(model)
+                                            else:
+                                                model_for_perm = model
+                                                
+                                            # Calculate permutation importance
+                                            r = permutation_importance(
+                                                model_for_perm, X_test, y_test,
+                                                n_repeats=10,
+                                                random_state=42
+                                            )
+                                            
+                                            # Create DataFrame for importance scores
+                                            importance_df = pd.DataFrame({
+                                                'feature': st.session_state.feature_columns_reg,
+                                                'importance': r.importances_mean,
+                                                'std': r.importances_std
+                                            }).sort_values('importance', ascending=False)
+                                            
+                                            # Display importance table
+                                            st.dataframe(importance_df)
+                                            
+                                            # Plot importance
+                                            fig, ax = plt.subplots(figsize=(10, 6))
+                                            importance_df.head(15).sort_values('importance').plot(
+                                                kind='barh', x='feature', y='importance', xerr='std', ax=ax)
+                                            plt.title('Feature Importance (Permutation Method)')
+                                            plt.tight_layout()
+                                            st.pyplot(fig)
                                         else:
-                                            model_for_perm = model
-                                        # Calculate permutation importance
-                                        r = permutation_importance(
-                                            model_for_perm, X_test, y_test,
-                                            n_repeats=10,
-                                            random_state=42
-                                        )
-                                        # Create DataFrame for importance scores
-                                        importance_df = pd.DataFrame({
-                                            'feature': X.columns,
-                                            'importance': r.importances_mean,
-                                            'std': r.importances_std
-                                        }).sort_values('importance', ascending=False)
-                                        # Display importance table
-                                        st.dataframe(importance_df)
-                                        # Plot importance
-                                        fig, ax = plt.subplots(figsize=(10, 6))
-                                        importance_df.head(15).sort_values('importance').plot(
-                                            kind='barh', x='feature', y='importance', xerr='std', ax=ax)
-                                        plt.title('Feature Importance (Permutation Method)')
-                                        plt.tight_layout()
-                                        st.pyplot(fig)
+                                            st.error("Required data not found. Please evaluate the model first.")
                                     except Exception as e:
                                         st.error(f"Could not calculate permutation importance: {str(e)}")
+                                        import traceback
+                                        st.code(traceback.format_exc())
             except Exception as e:
                 st.error(f"Error evaluating model: {str(e)}")
                 import traceback
