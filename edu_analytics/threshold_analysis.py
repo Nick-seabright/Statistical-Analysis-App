@@ -5,6 +5,8 @@ import seaborn as sns
 from typing import Dict, List, Tuple, Union, Optional, Any
 from .time_analysis import convert_time_to_minutes, minutes_to_time_string
 import logging
+from scipy import stats
+
 logger = logging.getLogger(__name__)
 
 def analyze_decision_boundaries(
@@ -170,11 +172,13 @@ def analyze_decision_boundaries(
                 'difference': difference
             })
         
-        # Find optimal splitting point
+        # Find optimal splitting point with minimum sample size requirement
         best_threshold = None
         best_difference = 0
         best_above_rate = 0
         best_below_rate = 0
+        best_above_count = 0
+        best_below_count = 0
         
         threshold_range = np.linspace(
             df_analysis[analysis_feature].min(),
@@ -182,22 +186,59 @@ def analyze_decision_boundaries(
             num=100
         )
         
+        # Minimum required percentage of data in each split (e.g., 10%)
+        min_sample_pct = 0.10
+        min_samples = int(len(df_analysis) * min_sample_pct)
+        
         for threshold in threshold_range:
             if is_time_variable:
                 # For time variables, switch comparison operators
-                above_threshold = df_analysis[df_analysis[analysis_feature] < threshold][target_column_analysis].mean()
-                below_threshold = df_analysis[df_analysis[analysis_feature] >= threshold][target_column_analysis].mean()
+                above_mask = df_analysis[analysis_feature] < threshold
+                below_mask = df_analysis[analysis_feature] >= threshold
             else:
-                above_threshold = df_analysis[df_analysis[analysis_feature] > threshold][target_column_analysis].mean()
-                below_threshold = df_analysis[df_analysis[analysis_feature] <= threshold][target_column_analysis].mean()
+                above_mask = df_analysis[analysis_feature] > threshold
+                below_mask = df_analysis[analysis_feature] <= threshold
+            
+            # Check if both groups have minimum sample sizes
+            above_count = above_mask.sum()
+            below_count = below_mask.sum()
+            
+            if above_count < min_samples or below_count < min_samples:
+                continue  # Skip thresholds that create too small groups
+            
+            above_threshold = df_analysis[above_mask][target_column_analysis].mean() if above_count > 0 else np.nan
+            below_threshold = df_analysis[below_mask][target_column_analysis].mean() if below_count > 0 else np.nan
             
             difference = abs(above_threshold - below_threshold)
+            
             if difference > best_difference:
                 best_difference = difference
                 best_threshold = threshold
                 best_above_rate = above_threshold
                 best_below_rate = below_threshold
+                best_above_count = above_count
+                best_below_count = below_count
         
+        # Check if a valid threshold was found
+        if best_threshold is None:
+            logger.info(f"\nNo valid threshold found that creates groups with at least {min_sample_pct:.0%} of the data.")
+            logger.info("The feature may not have a clear relationship with the target.")
+            
+            # Set default values at median
+            best_threshold = df_analysis[analysis_feature].median()
+            above_mask = df_analysis[analysis_feature] > best_threshold if not is_time_variable else df_analysis[analysis_feature] < best_threshold
+            below_mask = ~above_mask
+            best_above_rate = df_analysis[above_mask][target_column_analysis].mean() if above_mask.sum() > 0 else np.nan
+            best_below_rate = df_analysis[below_mask][target_column_analysis].mean() if below_mask.sum() > 0 else np.nan
+            best_difference = abs(best_above_rate - best_below_rate)
+            best_above_count = above_mask.sum()
+            best_below_count = below_mask.sum()
+            
+            # Flag that no valid threshold was found
+            no_valid_threshold = True
+        else:
+            no_valid_threshold = False
+
         # Format optimal threshold for display
         if is_time_variable:
             optimal_threshold_display = minutes_to_time_string(best_threshold)
@@ -209,6 +250,45 @@ def analyze_decision_boundaries(
         else:
             optimal_threshold_display = f"{best_threshold:.2f}"
         
+        # Calculate statistical significance of the difference
+        if best_above_count > 0 and best_below_count > 0:
+            # Get the actual target values for each group
+            if is_time_variable:
+                above_group = df_analysis[df_analysis[analysis_feature] < best_threshold][target_column_analysis]
+                below_group = df_analysis[df_analysis[analysis_feature] >= best_threshold][target_column_analysis]
+            else:
+                above_group = df_analysis[df_analysis[analysis_feature] > best_threshold][target_column_analysis]
+                below_group = df_analysis[df_analysis[analysis_feature] <= best_threshold][target_column_analysis]
+            
+            # Perform chi-square test for categorical target
+            contingency_table = pd.crosstab(
+                df_analysis[analysis_feature] > best_threshold if not is_time_variable else df_analysis[analysis_feature] < best_threshold,
+                df_analysis[target_column_analysis]
+            )
+            
+            chi2, p_value, _, _ = stats.chi2_contingency(contingency_table)
+            statistically_significant = p_value < 0.05
+        else:
+            statistically_significant = False
+            p_value = 1.0
+        
+        # Calculate effect size (Cohen's h for proportions)
+        def cohens_h(p1, p2):
+            """Calculate Cohen's h effect size for proportions"""
+            return 2 * np.arcsin(np.sqrt(p1)) - 2 * np.arcsin(np.sqrt(p2))
+        
+        effect_size = abs(cohens_h(best_above_rate, best_below_rate))
+        
+        # Interpret effect size
+        if effect_size < 0.2:
+            effect_size_interpretation = "Negligible"
+        elif effect_size < 0.5:
+            effect_size_interpretation = "Small"
+        elif effect_size < 0.8:
+            effect_size_interpretation = "Medium"
+        else:
+            effect_size_interpretation = "Large"
+        
         # Display results
         logger.info(f"\nOptimal splitting point: {optimal_threshold_display}")
         if is_time_variable:
@@ -217,6 +297,10 @@ def analyze_decision_boundaries(
         else:
             logger.info(f"Percentage of '{class_names[1]}' when {feature} is above threshold: {best_above_rate:.2%}")
             logger.info(f"Percentage of '{class_names[1]}' when {feature} is below threshold: {best_below_rate:.2%}")
+        
+        logger.info(f"Statistical significance: {'Yes' if statistically_significant else 'No'} (p-value: {p_value:.4f})")
+        logger.info(f"Effect size: {effect_size:.2f} - {effect_size_interpretation}")
+        logger.info(f"Group sizes: Above: {best_above_count} ({best_above_count/len(df_analysis):.1%}), Below: {best_below_count} ({best_below_count/len(df_analysis):.1%})")
         
         # Store results for this feature
         results['features'][feature] = {
@@ -229,193 +313,194 @@ def analyze_decision_boundaries(
             'optimal_threshold_display': optimal_threshold_display,
             'optimal_difference': best_difference,
             'optimal_above_rate': best_above_rate,
-            'optimal_below_rate': best_below_rate
+            'optimal_below_rate': best_below_rate,
+            'optimal_above_count': best_above_count,
+            'optimal_below_count': best_below_count,
+            'optimal_above_pct': best_above_count / len(df_analysis),
+            'optimal_below_pct': best_below_count / len(df_analysis),
+            'no_valid_threshold': no_valid_threshold,
+            'statistically_significant': statistically_significant,
+            'p_value': p_value,
+            'effect_size': effect_size,
+            'effect_size_interpretation': effect_size_interpretation
         }
         
-        # Create dedicated visualization for single feature threshold
+        # Create and show visualizations
         if len(feature_columns) <= 5:  # Only show plots if there aren't too many features
-            # Distribution plot
-            fig = plt.figure(figsize=(12, 5))
-            
-            # For categorical variables, plot a bar chart instead of a histogram
-            if is_categorical and not is_time_variable:
-                plt.subplot(1, 2, 1)
-                # Count occurrences for each category
-                category_counts = df_analysis.groupby([feature, target_column_analysis]).size().unstack(fill_value=0)
-                # Sort by total count
-                category_counts['total'] = category_counts.sum(axis=1)
-                category_counts = category_counts.sort_values('total', ascending=False).head(10)
-                category_counts = category_counts.drop('total', axis=1)
-                # Plot stacked bar chart
-                category_counts.plot(kind='bar', stacked=True, ax=plt.gca())
-                plt.title(f'Top 10 Categories of {feature} by Target')
-                plt.legend(class_names)
-                plt.xticks(rotation=45, ha='right')
+            # Create a new figure for single feature threshold
+            if len(feature_columns) == 1:
+                # Create dedicated visualization for single feature threshold
+                fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
                 
-                plt.subplot(1, 2, 2)
-                # Calculate and plot the target rate for each category
-                target_rates = df_analysis.groupby(feature)[target_column_analysis].mean().sort_values(ascending=False).head(10)
-                target_rates.plot(kind='bar')
-                plt.title(f'{class_names[1]} Rate by Top 10 {feature} Categories')
-                plt.ylabel(f'{class_names[1]} Rate')
-                plt.axhline(y=df_analysis[target_column_analysis].mean(), color='r', linestyle='--',
-                           label=f'Overall Average: {df_analysis[target_column_analysis].mean():.2%}')
-                plt.legend()
-                plt.xticks(rotation=45, ha='right')
-            else:
-                # Regular numeric feature or time variable - use histograms
-                plt.subplot(1, 2, 1)
-                # Plot distribution by target
-                for i in [0, 1]:
+                # Plot 1: Distribution by target
+                for i, class_name in enumerate(class_names):
                     subset = df_analysis[df_analysis[target_column_analysis] == i][analysis_feature]
-                    plt.hist(subset, alpha=0.5, label=class_names[i], bins=30)
-                plt.axvline(x=best_threshold, color='r', linestyle='--', label='Best split')
-                # For time variables, format the x-axis
-                if is_time_variable:
-                    plt.title(f'Distribution of {feature} (minutes) by Target')
-                    plt.xlabel('Time (minutes)')
-                else:
-                    plt.title(f'Distribution of {feature} by Target')
-                plt.legend()
+                    ax1.hist(subset, alpha=0.5, label=class_name, bins=30)
                 
-                # Plot 2: Target rate by percentile
-                plt.subplot(1, 2, 2)
-                percentiles = np.linspace(0, 100, 20)
-                if is_time_variable:
-                    # For time variables, use negative values to reverse the percentile order
-                    # This way, 90th percentile will be the fastest times
-                    thresholds = np.percentile(-df_analysis[analysis_feature].dropna(), percentiles)
-                    thresholds = -thresholds  # Convert back to positive values
-                    target_rates = []
-                    for threshold in thresholds:
-                        # Use < for time variables (faster times are better)
-                        rate = df_analysis[df_analysis[analysis_feature] < threshold][target_column_analysis].mean()
-                        target_rates.append(rate)
-                    plt.plot(percentiles, target_rates)
-                    plt.title(f'{class_names[1]} Rate by Percentile of {feature}')
-                    plt.xlabel('Percentile')
-                    plt.ylabel(f'{class_names[1]} Rate')
-                else:
-                    # Original logic for non-time variables
-                    thresholds = np.percentile(df_analysis[analysis_feature].dropna(), percentiles)
-                    target_rates = []
-                    for threshold in thresholds:
-                        rate = df_analysis[df_analysis[analysis_feature] > threshold][target_column_analysis].mean()
-                        target_rates.append(rate)
-                    plt.plot(percentiles, target_rates)
-                    plt.title(f'{class_names[1]} Rate by Percentile of {feature}')
-                    plt.xlabel('Percentile')
-                    plt.ylabel(f'{class_names[1]} Rate')
-            
-            plt.tight_layout()
-            plt.show()
-            
-        # Add single feature threshold analysis graph
-        if len(feature_columns) == 1:
-            # Create dedicated visualization for single feature threshold
-            feature = feature_columns[0]
-            feature_result = results['features'][feature]
-            
-            # Create a new figure
-            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
-            
-            # Get threshold and results
-            best_threshold = feature_result['optimal_threshold']
-            above_rate = feature_result['optimal_above_rate']
-            below_rate = feature_result['optimal_below_rate']
-            
-            # Get the analysis feature name
-            is_time = feature_result['is_time_variable']
-            analysis_feature = f'{feature}_minutes' if is_time else feature
-            
-            # Plot 1: Distribution by target
-            for i, class_name in enumerate(class_names):
-                subset = df_analysis[df_analysis[target_column_analysis] == i][analysis_feature]
-                ax1.hist(subset, alpha=0.5, label=class_name, bins=30)
-            
-            # Add threshold line
-            ax1.axvline(x=best_threshold, color='r', linestyle='--', 
-                       label=f'Optimal threshold: {feature_result["optimal_threshold_display"]}')
-            ax1.set_title(f'Distribution of {feature} by {target_column}')
-            ax1.legend()
-            
-            # Plot 2: Target rate by threshold
-            # Generate x-axis points
-            feature_min = df_analysis[analysis_feature].min()
-            feature_max = df_analysis[analysis_feature].max()
-            thresholds = np.linspace(feature_min, feature_max, 100)
-            
-            # Calculate rates at each threshold
-            above_rates = []
-            below_rates = []
-            
-            for threshold in thresholds:
-                if is_time:
-                    # For time variables, "above" means faster (smaller values)
-                    above_mask = df_analysis[analysis_feature] < threshold
-                    below_mask = df_analysis[analysis_feature] >= threshold
-                else:
-                    above_mask = df_analysis[analysis_feature] > threshold
-                    below_mask = df_analysis[analysis_feature] <= threshold
+                # Add threshold line
+                ax1.axvline(x=best_threshold, color='r', linestyle='--', 
+                           label=f'Optimal threshold: {optimal_threshold_display}')
+                ax1.set_title(f'Distribution of {feature} by {target_column}')
+                ax1.legend()
+                
+                # Plot 2: Target rate by threshold
+                # Generate x-axis points
+                feature_min = df_analysis[analysis_feature].min()
+                feature_max = df_analysis[analysis_feature].max()
+                thresholds = np.linspace(feature_min, feature_max, 100)
+                
+                # Calculate rates at each threshold
+                above_rates = []
+                below_rates = []
+                
+                for threshold in thresholds:
+                    if is_time_variable:
+                        # For time variables, "above" means faster (smaller values)
+                        above_mask = df_analysis[analysis_feature] < threshold
+                        below_mask = df_analysis[analysis_feature] >= threshold
+                    else:
+                        above_mask = df_analysis[analysis_feature] > threshold
+                        below_mask = df_analysis[analysis_feature] <= threshold
+                        
+                    above_rate = df_analysis[above_mask][target_column_analysis].mean() if above_mask.sum() > 0 else np.nan
+                    below_rate = df_analysis[below_mask][target_column_analysis].mean() if below_mask.sum() > 0 else np.nan
                     
-                above_rate_at_threshold = df_analysis[above_mask][target_column_analysis].mean() if above_mask.sum() > 0 else np.nan
-                below_rate_at_threshold = df_analysis[below_mask][target_column_analysis].mean() if below_mask.sum() > 0 else np.nan
+                    above_rates.append(above_rate)
+                    below_rates.append(below_rate)
                 
-                above_rates.append(above_rate_at_threshold)
-                below_rates.append(below_rate_at_threshold)
-            
-            # Plot rates
-            if is_time:
-                ax2.plot(thresholds, above_rates, 
-                        label=f'Percentage of "{class_names[1]}" when {feature} is below threshold', 
-                        color='blue')
-                ax2.plot(thresholds, below_rates, 
-                        label=f'Percentage of "{class_names[1]}" when {feature} is above threshold', 
-                        color='green')
-            else:
-                ax2.plot(thresholds, above_rates, 
-                        label=f'Percentage of "{class_names[1]}" when {feature} is above threshold', 
-                        color='blue')
-                ax2.plot(thresholds, below_rates, 
-                        label=f'Percentage of "{class_names[1]}" when {feature} is below threshold', 
-                        color='green')
-            
-            # Add optimal threshold line
-            ax2.axvline(x=best_threshold, color='r', linestyle='--')
-            
-            # Annotate the optimal threshold
-            if is_time:
-                annotation_text = (
-                    f'Optimal threshold: {feature_result["optimal_threshold_display"]}\n'
-                    f'Percentage of "{class_names[1]}" when below threshold: {above_rate:.2%}\n'
-                    f'Percentage of "{class_names[1]}" when above threshold: {below_rate:.2%}\n'
-                    f'Difference: {abs(above_rate - below_rate):.2%}'
-                )
-            else:
-                annotation_text = (
-                    f'Optimal threshold: {feature_result["optimal_threshold_display"]}\n'
-                    f'Percentage of "{class_names[1]}" when above threshold: {above_rate:.2%}\n'
-                    f'Percentage of "{class_names[1]}" when below threshold: {below_rate:.2%}\n'
-                    f'Difference: {abs(above_rate - below_rate):.2%}'
-                )
+                # Plot rates
+                if is_time_variable:
+                    line1_label = f"Target rate when {feature} is below threshold (faster)"
+                    line2_label = f"Target rate when {feature} is above threshold (slower)"
+                else:
+                    line1_label = f"Target rate when {feature} is above threshold"
+                    line2_label = f"Target rate when {feature} is below threshold"
                 
-            ax2.annotate(
-                annotation_text,
-                xy=(best_threshold, max(above_rate, below_rate)),
-                xytext=(best_threshold + (feature_max - feature_min) * 0.1, 
-                       max(above_rates + below_rates) * 0.9),
-                arrowprops=dict(facecolor='black', shrink=0.05, width=1.5, headwidth=8),
-                bbox=dict(boxstyle="round,pad=0.5", fc="white", ec="gray", alpha=0.8)
-            )
-            
-            ax2.set_title(f'Target Rate by {feature} Threshold')
-            ax2.set_xlabel(feature)
-            ax2.set_ylabel(f'Percentage of "{class_names[1]}"')
-            ax2.legend()
-            
-            plt.tight_layout()
-            results['single_feature_plot'] = fig
-    
+                ax2.plot(thresholds, above_rates, label=line1_label, color='blue')
+                ax2.plot(thresholds, below_rates, label=line2_label, color='green')
+                
+                # Add optimal threshold line
+                ax2.axvline(x=best_threshold, color='r', linestyle='--')
+                
+                # Check if a valid threshold was found
+                if no_valid_threshold:
+                    # Add a text annotation to the plot
+                    ax2.text(0.5, 0.5, 
+                             "No statistically meaningful threshold found.\nTry a different feature.",
+                             horizontalalignment='center',
+                             verticalalignment='center',
+                             transform=ax2.transAxes,
+                             fontsize=14,
+                             bbox=dict(boxstyle="round,pad=0.5", fc="yellow", ec="orange", alpha=0.8))
+                else:
+                    # Annotate the optimal threshold
+                    if is_time_variable:
+                        annotation = (
+                            f'Optimal threshold: {optimal_threshold_display}\n'
+                            f'Target rate below threshold (faster): {best_above_rate:.2%}\n'
+                            f'Target rate above threshold (slower): {best_below_rate:.2%}\n'
+                            f'Difference: {abs(best_above_rate - best_below_rate):.2%}\n'
+                            f'p-value: {p_value:.4f} ({"significant" if statistically_significant else "not significant"})'
+                        )
+                    else:
+                        annotation = (
+                            f'Optimal threshold: {optimal_threshold_display}\n'
+                            f'Target rate above threshold: {best_above_rate:.2%}\n'
+                            f'Target rate below threshold: {best_below_rate:.2%}\n'
+                            f'Difference: {abs(best_above_rate - best_below_rate):.2%}\n'
+                            f'p-value: {p_value:.4f} ({"significant" if statistically_significant else "not significant"})'
+                        )
+                    
+                    ax2.annotate(
+                        annotation,
+                        xy=(best_threshold, max(above_rates + below_rates) * 0.9),
+                        xytext=(best_threshold + (feature_max - feature_min) * 0.1, 
+                               max(above_rates + below_rates) * 0.9),
+                        arrowprops=dict(facecolor='black', shrink=0.05, width=1.5, headwidth=8),
+                        bbox=dict(boxstyle="round,pad=0.5", fc="white", ec="gray", alpha=0.8)
+                    )
+                
+                ax2.set_title(f'Target Rate by {feature} Threshold')
+                ax2.set_xlabel(feature)
+                ax2.set_ylabel('Target Rate')
+                ax2.legend()
+                
+                plt.tight_layout()
+                
+                # Store the figure in the results
+                results['features'][feature]['figure'] = fig
+            else:
+                # Distribution plot
+                fig = plt.figure(figsize=(12, 5))
+                # For categorical variables, plot a bar chart instead of a histogram
+                if is_categorical and not is_time_variable:
+                    plt.subplot(1, 2, 1)
+                    # Count occurrences for each category
+                    category_counts = df_analysis.groupby([feature, target_column_analysis]).size().unstack(fill_value=0)
+                    # Sort by total count
+                    category_counts['total'] = category_counts.sum(axis=1)
+                    category_counts = category_counts.sort_values('total', ascending=False).head(10)
+                    category_counts = category_counts.drop('total', axis=1)
+                    # Plot stacked bar chart
+                    category_counts.plot(kind='bar', stacked=True, ax=plt.gca())
+                    plt.title(f'Top 10 Categories of {feature} by Target')
+                    plt.legend(class_names)
+                    plt.xticks(rotation=45, ha='right')
+                    plt.subplot(1, 2, 2)
+                    # Calculate and plot the target rate for each category
+                    target_rates = df_analysis.groupby(feature)[target_column_analysis].mean().sort_values(ascending=False).head(10)
+                    target_rates.plot(kind='bar')
+                    plt.title(f'{class_names[1]} Rate by Top 10 {feature} Categories')
+                    plt.ylabel(f'{class_names[1]} Rate')
+                    plt.axhline(y=df_analysis[target_column_analysis].mean(), color='r', linestyle='--',
+                               label=f'Overall Average: {df_analysis[target_column_analysis].mean():.2%}')
+                    plt.legend()
+                    plt.xticks(rotation=45, ha='right')
+                else:
+                    # Regular numeric feature or time variable - use histograms
+                    plt.subplot(1, 2, 1)
+                    # Plot distribution by target
+                    for i in [0, 1]:
+                        subset = df_analysis[df_analysis[target_column_analysis] == i][analysis_feature]
+                        plt.hist(subset, alpha=0.5, label=class_names[i], bins=30)
+                    plt.axvline(x=best_threshold, color='r', linestyle='--', label='Best split')
+                    # For time variables, format the x-axis
+                    if is_time_variable:
+                        plt.title(f'Distribution of {feature} (minutes) by Target')
+                        plt.xlabel('Time (minutes)')
+                    else:
+                        plt.title(f'Distribution of {feature} by Target')
+                    plt.legend()
+                    # Plot 2: Target rate by percentile
+                    plt.subplot(1, 2, 2)
+                    percentiles = np.linspace(0, 100, 20)
+                    if is_time_variable:
+                        # For time variables, use negative values to reverse the percentile order
+                        # This way, 90th percentile will be the fastest times
+                        thresholds = np.percentile(-df_analysis[analysis_feature].dropna(), percentiles)
+                        thresholds = -thresholds  # Convert back to positive values
+                        target_rates = []
+                        for threshold in thresholds:
+                            # Use < for time variables (faster times are better)
+                            rate = df_analysis[df_analysis[analysis_feature] < threshold][target_column_analysis].mean()
+                            target_rates.append(rate)
+                        plt.plot(percentiles, target_rates)
+                        plt.title(f'{class_names[1]} Rate by Percentile of {feature}')
+                        plt.xlabel('Percentile (Faster times at higher percentiles)')
+                        plt.ylabel(f'{class_names[1]} Rate')
+                    else:
+                        # Original logic for non-time variables
+                        thresholds = np.percentile(df_analysis[analysis_feature].dropna(), percentiles)
+                        target_rates = []
+                        for threshold in thresholds:
+                            rate = df_analysis[df_analysis[analysis_feature] > threshold][target_column_analysis].mean()
+                            target_rates.append(rate)
+                        plt.plot(percentiles, target_rates)
+                        plt.title(f'{class_names[1]} Rate by Percentile of {feature}')
+                        plt.xlabel('Percentile')
+                        plt.ylabel(f'{class_names[1]} Rate')
+                plt.tight_layout()
+                
     # If we have exactly 2 features, analyze their combination
     if len(feature_columns) == 2:
         feature1, feature2 = feature_columns
@@ -556,16 +641,15 @@ def analyze_feature_combination(
             'sample_size': sample_size,
             'sample_pct': sample_pct
         }
-        logger.info(f"{quadrant}: Percentage of '{class_names[1]}' = {target_rate:.2%}, Samples = {sample_size} ({sample_pct:.1%})")
+        logger.info(f"{quadrant}: {class_names[1]} Rate = {target_rate:.2%}, Samples = {sample_size} ({sample_pct:.1%})")
     
     # Create visualization
-    fig = plt.figure(figsize=(10, 8))
+    plt.figure(figsize=(10, 8))
     
-    # Determine if target is categorical for coloring
-    is_categorical = len(class_names) <= 10  # Use discrete colors for categorical targets with few classes
+    # Determine if target is categorical
+    target_is_categorical = df[target_column].dtype == 'object' or df[target_column].dtype.name == 'category' or df[target_column].nunique() < 10
     
-    # Scatter plot colored by target
-    if is_categorical:
+    if target_is_categorical:
         # Use a discrete colormap for categorical data
         unique_classes = np.unique(df[target_column])
         n_classes = len(unique_classes)
@@ -586,12 +670,12 @@ def analyze_feature_combination(
         from matplotlib.lines import Line2D
         legend_elements = [
             Line2D([0], [0], marker='o', color='w', markerfacecolor=cmap(i), 
-                   markersize=10, label=class_names[i] if i < len(class_names) else f"Class {i}")
+                   markersize=10, label=str(unique_classes[i]) if i < len(unique_classes) else f"Class {i}")
             for i in range(n_classes)
         ]
         plt.legend(handles=legend_elements, title="Classes")
     else:
-        # Continuous colormap for numeric targets
+        # For numeric target, use continuous colormap
         scatter = plt.scatter(
             df[analysis_feature1],
             df[analysis_feature2],
@@ -599,15 +683,15 @@ def analyze_feature_combination(
             cmap='coolwarm',
             alpha=0.6
         )
-        plt.colorbar(scatter, label=f'{class_names[1]} Rate')
+        plt.colorbar(scatter, label=f'{target_column} Value')
     
-    # Invert axes for time variables if needed
+    # Invert axes for time variables
     if is_time1:
         plt.gca().invert_xaxis()
     if is_time2:
         plt.gca().invert_yaxis()
     
-    # Add axis labels without value judgments
+    # Add axis labels
     plt.xlabel(f"{feature1}")
     plt.ylabel(f"{feature2}")
     plt.title(f'Decision Boundary: {feature1} vs {feature2}')
@@ -618,22 +702,18 @@ def analyze_feature_combination(
     
     # Add quadrant labels with target rates
     label_coords = {
-        'Q1': (df[analysis_feature1].min() + (median1 - df[analysis_feature1].min()) * 0.5, 
-               df[analysis_feature2].max() - (df[analysis_feature2].max() - median2) * 0.5),
-        'Q2': (df[analysis_feature1].max() - (df[analysis_feature1].max() - median1) * 0.5, 
-               df[analysis_feature2].max() - (df[analysis_feature2].max() - median2) * 0.5),
-        'Q3': (df[analysis_feature1].max() - (df[analysis_feature1].max() - median1) * 0.5, 
-               df[analysis_feature2].min() + (median2 - df[analysis_feature2].min()) * 0.5),
-        'Q4': (df[analysis_feature1].min() + (median1 - df[analysis_feature1].min()) * 0.5, 
-               df[analysis_feature2].min() + (median2 - df[analysis_feature2].min()) * 0.5)
+        'Q1': (df[analysis_feature1].min(), df[analysis_feature2].max()),
+        'Q2': (df[analysis_feature1].max(), df[analysis_feature2].max()),
+        'Q3': (df[analysis_feature1].max(), df[analysis_feature2].min()),
+        'Q4': (df[analysis_feature1].min(), df[analysis_feature2].min())
     }
     
     for quadrant, coords in label_coords.items():
         rate = quadrant_results[quadrant]['target_rate']
         size = quadrant_results[quadrant]['sample_size']
         plt.text(
-            coords[0],
-            coords[1],
+            coords[0] + (median1 - coords[0]) * 0.2,
+            coords[1] + (median2 - coords[1]) * 0.2,
             f"{quadrant}: {rate:.1%}\n(n={size})",
             ha='center', va='center',
             bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.8)
@@ -641,7 +721,6 @@ def analyze_feature_combination(
     
     plt.tight_layout()
     
-    # Return results
     # Return results
     return {
         'feature1': feature1,
@@ -652,8 +731,7 @@ def analyze_feature_combination(
         'median2': median2,
         'median1_display': median1_display,
         'median2_display': median2_display,
-        'quadrant_results': quadrant_results,
-        'plot': fig
+        'quadrant_results': quadrant_results
     }
 
 def analyze_custom_threshold_combination(
@@ -774,7 +852,7 @@ def analyze_custom_threshold_combination(
     logger.info(f"Feature 2: {feature2}, Threshold: {threshold2}")
     logger.info("\nResults by quadrant:")
     for condition, row in results_df.iterrows():
-        logger.info(f"{condition}: Percentage of '{class_names[1]}' = {row['target_1_rate']:.2%}, "
+        logger.info(f"{condition}: {class_names[1]} Rate = {row['target_1_rate']:.2%}, "
                    f"Samples = {row['count']} ({row['percentage_of_total']:.1%})")
     
     return results_df
@@ -836,6 +914,10 @@ def find_optimal_thresholds(
         df_analysis['target_binary'] = (df_analysis[target_column] > median).astype(int)
         target_column_analysis = 'target_binary'
     
+    # Minimum required percentage of data in each split
+    min_sample_pct = 0.10
+    min_samples = int(len(df_analysis) * min_sample_pct)
+    
     # Generate thresholds to test
     feature_min = df_analysis[analysis_feature].min()
     feature_max = df_analysis[analysis_feature].max()
@@ -853,12 +935,20 @@ def find_optimal_thresholds(
             above_threshold_mask = df_analysis[analysis_feature] > threshold
             below_threshold_mask = df_analysis[analysis_feature] <= threshold
         
-        # Calculate target rates
-        above_rate = df_analysis[above_threshold_mask][target_column_analysis].mean() if above_threshold_mask.sum() > 0 else np.nan
-        below_rate = df_analysis[below_threshold_mask][target_column_analysis].mean() if below_threshold_mask.sum() > 0 else np.nan
+        # Check minimum sample size
+        above_count = above_threshold_mask.sum()
+        below_count = below_threshold_mask.sum()
         
-        # Calculate separation (difference in rates)
-        difference = abs(above_rate - below_rate) if not np.isnan(above_rate) and not np.isnan(below_rate) else 0
+        if above_count < min_samples or below_count < min_samples:
+            # Skip thresholds that create too small groups
+            above_rate = np.nan
+            below_rate = np.nan
+            difference = 0
+        else:
+            # Calculate target rates
+            above_rate = df_analysis[above_threshold_mask][target_column_analysis].mean() if above_count > 0 else np.nan
+            below_rate = df_analysis[below_threshold_mask][target_column_analysis].mean() if below_count > 0 else np.nan
+            difference = abs(above_rate - below_rate) if not np.isnan(above_rate) and not np.isnan(below_rate) else 0
         
         # Format threshold for display
         if is_time:
@@ -873,16 +963,21 @@ def find_optimal_thresholds(
             'above_rate': above_rate,
             'below_rate': below_rate,
             'difference': difference,
-            'above_count': above_threshold_mask.sum(),
-            'below_count': below_threshold_mask.sum()
+            'above_count': above_count,
+            'below_count': below_count,
+            'above_pct': above_count / len(df_analysis),
+            'below_pct': below_count / len(df_analysis),
+            'passes_min_size': above_count >= min_samples and below_count >= min_samples
         })
     
     # Convert to DataFrame
     results_df = pd.DataFrame(results)
     
-    # Find optimal threshold (maximizing difference)
-    if len(results_df) > 0:
-        best_idx = results_df['difference'].idxmax()
+    # Find optimal threshold (maximizing difference among those passing minimum size)
+    valid_results = results_df[results_df['passes_min_size']]
+    
+    if len(valid_results) > 0:
+        best_idx = valid_results['difference'].idxmax()
         best_threshold = results_df.loc[best_idx, 'threshold']
         best_threshold_display = results_df.loc[best_idx, 'threshold_display']
         best_difference = results_df.loc[best_idx, 'difference']
@@ -890,15 +985,49 @@ def find_optimal_thresholds(
         best_below_rate = results_df.loc[best_idx, 'below_rate']
         
         logger.info(f"\nOptimal threshold for {feature}: {best_threshold_display}")
-        if is_time:
-            logger.info(f"Percentage of target when below threshold (faster times): {best_above_rate:.2%}")
-            logger.info(f"Percentage of target when above threshold (slower times): {best_below_rate:.2%}")
-        else:
-            logger.info(f"Percentage of target when above threshold: {best_above_rate:.2%}")
-            logger.info(f"Percentage of target when below threshold: {best_below_rate:.2%}")
+        logger.info(f"Target rate above threshold: {best_above_rate:.2%}")
+        logger.info(f"Target rate below threshold: {best_below_rate:.2%}")
         logger.info(f"Difference: {best_difference:.2%}")
         
         # Add optimal threshold info to results
         results_df['is_optimal'] = (results_df.index == best_idx)
-    
+        
+        # Calculate statistical significance
+        above_mask = df_analysis[analysis_feature] < best_threshold if is_time else df_analysis[analysis_feature] > best_threshold
+        below_mask = ~above_mask
+        
+        # Perform chi-square test
+        contingency_table = pd.crosstab(above_mask, df_analysis[target_column_analysis])
+        chi2, p_value, _, _ = stats.chi2_contingency(contingency_table)
+        
+        # Add to results
+        results_df.loc[best_idx, 'p_value'] = p_value
+        results_df.loc[best_idx, 'statistically_significant'] = p_value < 0.05
+        
+        # Calculate effect size
+        def cohens_h(p1, p2):
+            """Calculate Cohen's h effect size for proportions"""
+            return 2 * np.arcsin(np.sqrt(p1)) - 2 * np.arcsin(np.sqrt(p2))
+        
+        effect_size = abs(cohens_h(best_above_rate, best_below_rate))
+        
+        # Interpret effect size
+        if effect_size < 0.2:
+            effect_size_interpretation = "Negligible"
+        elif effect_size < 0.5:
+            effect_size_interpretation = "Small"
+        elif effect_size < 0.8:
+            effect_size_interpretation = "Medium"
+        else:
+            effect_size_interpretation = "Large"
+            
+        # Add to results
+        results_df.loc[best_idx, 'effect_size'] = effect_size
+        results_df.loc[best_idx, 'effect_size_interpretation'] = effect_size_interpretation
+        
+        logger.info(f"Statistical significance: p-value = {p_value:.4f} ({'significant' if p_value < 0.05 else 'not significant'})")
+        logger.info(f"Effect size: {effect_size:.2f} - {effect_size_interpretation}")
+    else:
+        logger.info(f"\nNo valid threshold found for {feature} that meets minimum group size requirement.")
+        
     return results_df
