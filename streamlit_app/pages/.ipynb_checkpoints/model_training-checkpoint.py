@@ -2541,6 +2541,17 @@ def show_model_training():
 
     with tab3:
         st.markdown("<div class='subheader'>Model Evaluation</div>", unsafe_allow_html=True)
+        
+        # Initialize evaluation state in session_state if not present
+        if 'evaluation_state' not in st.session_state:
+            st.session_state.evaluation_state = {
+                'threshold_applied': False,
+                'threshold_value': 0.5,
+                'permutation_calculated': False,
+                'selected_model': None,
+                'evaluation_performed': False
+            }
+        
         # Add explanation of metrics
         with st.expander("📊 Understanding Model Evaluation Metrics", expanded=True):
             st.markdown("""
@@ -2554,11 +2565,9 @@ def show_model_training():
             - **ROC-AUC**: Area Under the Receiver Operating Characteristic curve. Measures the ability to distinguish between classes. _Higher is better_.
             - **CV Accuracy**: Cross-validation accuracy, the average accuracy across multiple train-test splits. More robust than a single accuracy score. _Higher is better_.
             - **CV Std**: Standard deviation of cross-validation accuracy. Indicates consistency of model performance. _Lower is better_.
-            
             ### For Imbalanced Data
             - Focus on **Balanced Accuracy**, **Recall**, and **PR-AUC** rather than standard accuracy
             - Monitor class-specific metrics to ensure minority class is being predicted properly
-            
             ### Regression Metrics
             - **MSE (Mean Squared Error)**: Average of squared differences between predicted and actual values. Penalizes larger errors more. _Lower is better_.
             - **RMSE (Root Mean Squared Error)**: Square root of MSE. In the same units as the target variable. _Lower is better_.
@@ -2566,528 +2575,1184 @@ def show_model_training():
             - **R² Score**: Proportion of variance in the target variable that is predictable from the features. Ranges from 0 to 1 (can be negative in bad models). _Higher is better_.
             - **CV R²**: Cross-validation R² score, the average R² across multiple train-test splits. _Higher is better_.
             - **CV Std**: Standard deviation of cross-validation R² scores. _Lower is better_.
-            
             ### Feature Importance
             - **Feature Importance**: Indicates how useful each feature is in the prediction. For tree-based models, this is calculated directly from the model structure.
             - **Permutation Importance**: For models without built-in feature importance, this measures how much model performance decreases when a feature is randomly shuffled.
             """)
-            
+        
         # Check if models exist
         if 'models' not in st.session_state or not st.session_state.models:
             st.warning("No trained models available for evaluation. Please train models first.")
             return
-            
+        
         # Model selection for evaluation
         model_names = list(st.session_state.models.keys())
+        
+        # Use the stored model if already evaluated, otherwise default to first model
+        default_index = 0
+        if st.session_state.evaluation_state['selected_model'] in model_names:
+            default_index = model_names.index(st.session_state.evaluation_state['selected_model'])
+        
         selected_model = st.selectbox(
             "Select model to evaluate",
-            model_names
+            model_names,
+            index=default_index
         )
+        
+        # Store selected model name in state
+        st.session_state.evaluation_state['selected_model'] = selected_model
+        
+        # Get data from session state
+        X = st.session_state.processed_data['X']
+        y = st.session_state.processed_data['y']
+        target_column = st.session_state.processed_data['target_column']
+        target_type = st.session_state.target_type
+        target_mapping = st.session_state.target_mapping if 'target_mapping' in st.session_state else None
         
         # Threshold adjustment for binary classification
         custom_threshold = None
         if target_type == 'categorical' and len(np.unique(y)) == 2:
             st.markdown("### Prediction Threshold Adjustment")
             st.info("For imbalanced datasets, adjusting the prediction threshold can improve minority class detection.")
-            
             adjust_threshold = st.checkbox("Adjust prediction threshold", value=False)
             if adjust_threshold:
                 custom_threshold = st.slider(
                     "Prediction threshold",
                     min_value=0.0,
                     max_value=1.0,
-                    value=0.5,
+                    value=st.session_state.evaluation_state['threshold_value'],
                     step=0.05,
                     help="Lower values increase sensitivity (more minority class predictions)"
                 )
+                # Store threshold value in state
+                st.session_state.evaluation_state['threshold_value'] = custom_threshold
         
-        # In the model evaluation section
-        if st.button("Evaluate Model", key="evaluate_model"):
-            try:
-                with st.spinner("Evaluating model..."):
-                    # Get model
-                    model = st.session_state.models[selected_model]
-                    # Split data for evaluation
-                    from sklearn.model_selection import train_test_split
-                    _, X_test, _, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-                    # Check if this is a neural network model (TensorFlow/Keras)
-                    is_neural_network = 'keras' in str(type(model)).lower()
-                    # Evaluate model
-                    if target_type == 'categorical':
-                        # Classification evaluation
-                        from sklearn.metrics import (accuracy_score, classification_report, confusion_matrix, 
-                                                    roc_curve, auc, precision_recall_curve, average_precision_score,
-                                                    precision_score, recall_score, f1_score, balanced_accuracy_score)
-                        # Calculate number of classes once, before using it
-                        n_classes = len(np.unique(y))
-                        # Handle predictions based on model type
-                        if is_neural_network:
-                            # For neural networks, we need to convert predictions to classes
-                            if n_classes == 2:  # Binary classification
-                                raw_predictions = model.predict(X_test)
-                                y_pred_proba = raw_predictions.flatten()
+        # Evaluate button with unique key
+        evaluate_col1, evaluate_col2 = st.columns([1, 3])
+        evaluate_button = evaluate_col1.button("Evaluate Model", key="evaluate_model_button")
+        
+        # Container for evaluation results
+        evaluation_results_container = st.container()
+        
+        # Check if evaluation should be performed
+        if evaluate_button or st.session_state.evaluation_state['evaluation_performed']:
+            # Set state flag to indicate evaluation has been performed
+            if evaluate_button:
+                st.session_state.evaluation_state['evaluation_performed'] = True
+                # Reset other flags when new evaluation is requested
+                st.session_state.evaluation_state['threshold_applied'] = False
+                st.session_state.evaluation_state['permutation_calculated'] = False
+            
+            with evaluation_results_container:
+                try:
+                    with st.spinner("Evaluating model..."):
+                        # Get model
+                        model = st.session_state.models[selected_model]
+                        
+                        # Check if model is a dictionary (for SVM and NN models that include scaler)
+                        if isinstance(model, dict) and 'model' in model:
+                            actual_model = model['model']
+                            scaler = model.get('scaler', None)
+                        else:
+                            actual_model = model
+                            scaler = None
+                        
+                        # Split data for evaluation
+                        from sklearn.model_selection import train_test_split
+                        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+                        
+                        # Apply scaling if available
+                        if scaler is not None:
+                            X_test_transformed = scaler.transform(X_test)
+                        else:
+                            X_test_transformed = X_test
+                        
+                        # Check if this is a neural network model (TensorFlow/Keras)
+                        is_neural_network = 'keras' in str(type(actual_model)).lower()
+                        
+                        # Evaluate model based on target type
+                        if target_type == 'categorical':
+                            # Classification evaluation
+                            from sklearn.metrics import (accuracy_score, classification_report, confusion_matrix,
+                                                        roc_curve, auc, precision_recall_curve, average_precision_score,
+                                                        precision_score, recall_score, f1_score, balanced_accuracy_score)
+                            
+                            # Calculate number of classes
+                            n_classes = len(np.unique(y))
+                            
+                            # Store in session state for other functions
+                            st.session_state.evaluation_state['n_classes'] = n_classes
+                            
+                            # Handle predictions based on model type
+                            if is_neural_network:
+                                # For neural networks
+                                if n_classes == 2:  # Binary classification
+                                    raw_predictions = actual_model.predict(X_test_transformed)
+                                    y_pred_proba = raw_predictions.flatten()
+                                    threshold_to_use = custom_threshold if custom_threshold is not None else 0.5
+                                    y_pred = (y_pred_proba > threshold_to_use).astype(int)
+                                    
+                                    # Store predictions and probabilities in session state
+                                    st.session_state.evaluation_state['y_test'] = y_test
+                                    st.session_state.evaluation_state['y_pred'] = y_pred
+                                    st.session_state.evaluation_state['y_pred_proba'] = y_pred_proba
+                                    
+                                    if custom_threshold is not None:
+                                        st.info(f"Using custom threshold: {threshold_to_use}")
+                                else:  # Multi-class classification
+                                    raw_predictions = actual_model.predict(X_test_transformed)
+                                    y_pred = np.argmax(raw_predictions, axis=1)
+                                    y_pred_proba = None  # Not applicable for multi-class
+                                    
+                                    # Store predictions in session state
+                                    st.session_state.evaluation_state['y_test'] = y_test
+                                    st.session_state.evaluation_state['y_pred'] = y_pred
+                            elif hasattr(actual_model, 'predict_proba') and custom_threshold is not None and n_classes == 2:
+                                # For models with probability estimates and custom threshold
+                                y_pred_proba = actual_model.predict_proba(X_test_transformed)[:, 1]
+                                y_pred = (y_pred_proba > custom_threshold).astype(int)
                                 
-                                if custom_threshold is not None:
-                                    y_pred = (y_pred_proba > custom_threshold).astype(int)
-                                    st.info(f"Using custom threshold: {custom_threshold}")
-                                else:
-                                    y_pred = (y_pred_proba > 0.5).astype(int)
-                            else:  # Multi-class classification
-                                raw_predictions = model.predict(X_test)
-                                y_pred = np.argmax(raw_predictions, axis=1)
-                        elif hasattr(model, 'predict_proba') and custom_threshold is not None:
-                            # For models with probability estimates and custom threshold
-                            y_pred_proba = model.predict_proba(X_test)[:, 1]
-                            y_pred = (y_pred_proba > custom_threshold).astype(int)
-                            st.info(f"Using custom threshold: {custom_threshold}")
-                        else:
-                            # Standard models
-                            y_pred = model.predict(X_test)
-                            if hasattr(model, 'predict_proba'):
-                                y_pred_proba = model.predict_proba(X_test)[:, 1]
+                                # Store predictions and probabilities in session state
+                                st.session_state.evaluation_state['y_test'] = y_test
+                                st.session_state.evaluation_state['y_pred'] = y_pred
+                                st.session_state.evaluation_state['y_pred_proba'] = y_pred_proba
+                                
+                                st.info(f"Using custom threshold: {custom_threshold}")
                             else:
-                                y_pred_proba = None
-                        
-                        # Calculate metrics
-                        accuracy = accuracy_score(y_test, y_pred)
-                        balanced_acc = balanced_accuracy_score(y_test, y_pred)
-                        precision = precision_score(y_test, y_pred, average='weighted')
-                        recall = recall_score(y_test, y_pred, average='weighted')
-                        f1 = f1_score(y_test, y_pred, average='weighted')
-                        
-                        # Display metrics
-                        st.markdown("### Overall Metrics")
-                        col1, col2, col3 = st.columns(3)
-                        col1.metric("Accuracy", f"{accuracy:.4f}")
-                        col1.metric("Balanced Accuracy", f"{balanced_acc:.4f}")
-                        col2.metric("Precision", f"{precision:.4f}")
-                        col2.metric("Recall", f"{recall:.4f}")
-                        col3.metric("F1 Score", f"{f1:.4f}")
-                        
-                        # Calculate and display class-specific metrics
-                        st.markdown("### Class-Specific Metrics")
-                        # Generate classification report
-                        report = classification_report(y_test, y_pred, output_dict=True)
-                        
-                        # Convert report to DataFrame with class names
-                        if target_mapping:
-                            # Create reverse mapping (encoded value -> original category)
-                            reverse_mapping = {v: k for k, v in target_mapping.items()}
-                            
-                            # Create a new report with original category names
-                            new_report = {}
-                            for key, val in report.items():
-                                if key.isdigit() or (isinstance(key, (int, float)) and key == int(key)):
-                                    # This is a class label - convert it
-                                    new_key = reverse_mapping.get(int(key), str(key))
-                                    new_report[new_key] = val
+                                # Standard models
+                                y_pred = actual_model.predict(X_test_transformed)
+                                
+                                # Store predictions in session state
+                                st.session_state.evaluation_state['y_test'] = y_test
+                                st.session_state.evaluation_state['y_pred'] = y_pred
+                                
+                                if hasattr(actual_model, 'predict_proba') and n_classes == 2:
+                                    y_pred_proba = actual_model.predict_proba(X_test_transformed)[:, 1]
+                                    # Store probabilities in session state
+                                    st.session_state.evaluation_state['y_pred_proba'] = y_pred_proba
                                 else:
-                                    # This is a metric like 'accuracy', 'macro avg', etc.
-                                    new_report[key] = val
+                                    y_pred_proba = None
                             
-                            report = new_report
-                        
-                        # Convert to DataFrame for display
-                        report_df = pd.DataFrame(report).transpose()
-                        
-                        # Display report
-                        st.dataframe(report_df)
-                        
-                        # Plot confusion matrix
-                        st.markdown("### Confusion Matrix")
-                        cm = confusion_matrix(y_test, y_pred)
-                        
-                        # Get class names for the confusion matrix
-                        if target_mapping:
-                            # Create reverse mapping (encoded value -> original category)
-                            reverse_mapping = {v: k for k, v in target_mapping.items()}
-                            class_names = [reverse_mapping.get(i, str(i)) for i in range(len(np.unique(y)))]
+                            # Calculate metrics
+                            accuracy = accuracy_score(y_test, y_pred)
+                            balanced_acc = balanced_accuracy_score(y_test, y_pred)
+                            precision = precision_score(y_test, y_pred, average='weighted', zero_division=0)
+                            recall = recall_score(y_test, y_pred, average='weighted', zero_division=0)
+                            f1 = f1_score(y_test, y_pred, average='weighted', zero_division=0)
                             
-                            # Plot confusion matrix with original class names
-                            fig, ax = plt.subplots(figsize=(8, 6))
-                            sns.heatmap(cm, annot=True, fmt='d', ax=ax, xticklabels=class_names, yticklabels=class_names,
-                                       cmap='Blues')
-                        else:
-                            fig, ax = plt.subplots(figsize=(8, 6))
-                            sns.heatmap(cm, annot=True, fmt='d', ax=ax, cmap='Blues')
-                        
-                        plt.title('Confusion Matrix')
-                        plt.ylabel('True Label')
-                        plt.xlabel('Predicted Label')
-                        st.pyplot(fig)
-                        
-                        # For binary classification, add ROC and PR curves
-                        if n_classes == 2 and y_pred_proba is not None:
-                            st.markdown("### ROC and Precision-Recall Curves")
+                            # Store metrics in session state
+                            st.session_state.evaluation_state['metrics'] = {
+                                'accuracy': accuracy,
+                                'balanced_acc': balanced_acc,
+                                'precision': precision,
+                                'recall': recall,
+                                'f1': f1
+                            }
                             
-                            # Create two columns for the plots
-                            col1, col2 = st.columns(2)
+                            # Display metrics
+                            st.markdown("### Overall Metrics")
+                            col1, col2, col3 = st.columns(3)
+                            col1.metric("Accuracy", f"{accuracy:.4f}")
+                            col1.metric("Balanced Accuracy", f"{balanced_acc:.4f}")
+                            col2.metric("Precision", f"{precision:.4f}")
+                            col2.metric("Recall", f"{recall:.4f}")
+                            col3.metric("F1 Score", f"{f1:.4f}")
                             
-                            # ROC curve
-                            fpr, tpr, thresholds = roc_curve(y_test, y_pred_proba)
-                            roc_auc = auc(fpr, tpr)
+                            # Calculate and display class-specific metrics
+                            st.markdown("### Class-Specific Metrics")
                             
-                            fig1, ax1 = plt.subplots(figsize=(8, 6))
-                            ax1.plot(fpr, tpr, label=f'ROC curve (area = {roc_auc:.3f})')
-                            ax1.plot([0, 1], [0, 1], 'k--')
+                            # Generate classification report
+                            report = classification_report(y_test, y_pred, output_dict=True)
                             
-                            # If custom threshold was used, add point on ROC curve
-                            if custom_threshold is not None:
-                                # Find index closest to custom threshold
-                                thresh_idx = np.argmin(np.abs(thresholds - custom_threshold))
-                                ax1.plot(fpr[thresh_idx], tpr[thresh_idx], 'ro', markersize=8, 
-                                        label=f'Threshold = {custom_threshold:.2f}')
-                            
-                            ax1.set_xlim([0.0, 1.0])
-                            ax1.set_ylim([0.0, 1.05])
-                            ax1.set_xlabel('False Positive Rate')
-                            ax1.set_ylabel('True Positive Rate')
-                            ax1.set_title('Receiver Operating Characteristic (ROC)')
-                            ax1.legend(loc="lower right")
-                            col1.pyplot(fig1)
-                            
-                            # Precision-Recall curve (better for imbalanced data)
-                            precision_curve, recall_curve, _ = precision_recall_curve(y_test, y_pred_proba)
-                            pr_auc = average_precision_score(y_test, y_pred_proba)
-                            
-                            fig2, ax2 = plt.subplots(figsize=(8, 6))
-                            ax2.plot(recall_curve, precision_curve, label=f'PR curve (area = {pr_auc:.3f})')
-                            
-                            # Add baseline (no skill) line
-                            no_skill = len(y_test[y_test == 1]) / len(y_test)
-                            ax2.plot([0, 1], [no_skill, no_skill], linestyle='--', label='No Skill')
-                            
-                            ax2.set_xlim([0.0, 1.0])
-                            ax2.set_ylim([0.0, 1.05])
-                            ax2.set_xlabel('Recall')
-                            ax2.set_ylabel('Precision')
-                            ax2.set_title('Precision-Recall Curve (Better for Imbalanced Data)')
-                            ax2.legend(loc="best")
-                            col2.pyplot(fig2)
-                            
-                            # Threshold optimization curve for binary classification
-                            st.markdown("### Threshold Optimization")
-                            st.info("This visualization helps find the optimal threshold for your specific needs. "
-                                   "Move the threshold to balance precision and recall.")
-                            
-                            # Create dataframe of threshold metrics
-                            thresh_metrics = []
-                            for t in np.linspace(0, 1, 100):
-                                y_pred_t = (y_pred_proba > t).astype(int)
-                                precision_t = precision_score(y_test, y_pred_t, zero_division=0)
-                                recall_t = recall_score(y_test, y_pred_t)
-                                f1_t = 2 * (precision_t * recall_t) / (precision_t + recall_t) if (precision_t + recall_t) > 0 else 0
-                                accuracy_t = accuracy_score(y_test, y_pred_t)
-                                thresh_metrics.append({
-                                    'threshold': t,
-                                    'precision': precision_t,
-                                    'recall': recall_t,
-                                    'f1': f1_t,
-                                    'accuracy': accuracy_t
-                                })
-                            
-                            thresh_df = pd.DataFrame(thresh_metrics)
-                            
-                            # Plot threshold metrics
-                            fig3, ax3 = plt.subplots(figsize=(10, 6))
-                            ax3.plot(thresh_df['threshold'], thresh_df['precision'], label='Precision')
-                            ax3.plot(thresh_df['threshold'], thresh_df['recall'], label='Recall')
-                            ax3.plot(thresh_df['threshold'], thresh_df['f1'], label='F1 Score')
-                            ax3.plot(thresh_df['threshold'], thresh_df['accuracy'], label='Accuracy')
-                            
-                            # Add vertical line for current/default threshold
-                            if custom_threshold is not None:
-                                ax3.axvline(x=custom_threshold, color='r', linestyle='--', 
-                                          label=f'Custom threshold ({custom_threshold:.2f})')
-                            else:
-                                ax3.axvline(x=0.5, color='k', linestyle='--', 
-                                          label='Default threshold (0.5)')
-                            
-                            # Find threshold with maximum F1 score
-                            best_f1_threshold = thresh_df.loc[thresh_df['f1'].idxmax(), 'threshold']
-                            ax3.axvline(x=best_f1_threshold, color='g', linestyle='--', 
-                                      label=f'Best F1 threshold ({best_f1_threshold:.2f})')
-                            
-                            ax3.set_xlim([0.0, 1.0])
-                            ax3.set_ylim([0.0, 1.05])
-                            ax3.set_xlabel('Threshold')
-                            ax3.set_ylabel('Score')
-                            ax3.set_title('Metrics at Different Thresholds')
-                            ax3.legend(loc="best")
-                            ax3.grid(True, alpha=0.3)
-                            st.pyplot(fig3)
-                            
-                            # Recommended threshold based on class imbalance
-                            class_distribution = pd.Series(y_test).value_counts(normalize=True)
-                            minority_class_pct = class_distribution.min()
-                            
-                            st.markdown("### Threshold Recommendations")
-                            st.info(f"Class distribution: {dict(pd.Series(y_test).value_counts())}")
-                            
-                            recommendations = [
-                                {
-                                    "name": "Balanced (Default)",
-                                    "threshold": 0.5,
-                                    "description": "Standard threshold, assumes equal class importance."
-                                },
-                                {
-                                    "name": "Maximum F1",
-                                    "threshold": best_f1_threshold,
-                                    "description": "Optimizes the balance between precision and recall."
-                                },
-                                {
-                                    "name": "Class-Balanced",
-                                    "threshold": 1 - minority_class_pct,
-                                    "description": "Adjusts for class imbalance, increasing minority class recall."
-                                },
-                            ]
-                            
-                            # Display recommendations
-                            for rec in recommendations:
-                                col1, col2 = st.columns([1, 3])
-                                col1.metric(rec["name"], f"{rec['threshold']:.2f}")
-                                col2.write(rec["description"])
-                            
-                            # Add option to apply new threshold
-                            new_threshold = st.slider(
-                                "Select new threshold to apply",
-                                min_value=0.0,
-                                max_value=1.0,
-                                value=custom_threshold if custom_threshold is not None else 0.5,
-                                step=0.05,
-                                key="new_threshold_slider"
-                            )
-                            
-                            # Use a unique key for the button and place it in a container to prevent page refresh
-                            threshold_col1, threshold_col2 = st.columns([1, 3])
-                            apply_threshold = threshold_col1.button("Apply Threshold", key="apply_threshold_button")
-                            
-                            # Container for results that will be updated when button is clicked
-                            threshold_results_container = st.container()
-                            
-                            if apply_threshold:
-                                with threshold_results_container:
-                                    # Recalculate metrics with new threshold
-                                    y_pred_new = (y_pred_proba > new_threshold).astype(int)
-                                    accuracy_new = accuracy_score(y_test, y_pred_new)
-                                    precision_new = precision_score(y_test, y_pred_new)
-                                    recall_new = recall_score(y_test, y_pred_new)
-                                    f1_new = f1_score(y_test, y_pred_new)
-                                    
-                                    # Show new metrics
-                                    st.success(f"Applied threshold: {new_threshold:.2f}")
-                                    col1, col2, col3, col4 = st.columns(4)
-                                    col1.metric("Accuracy", f"{accuracy_new:.4f}",
-                                              f"{accuracy_new - accuracy:.4f}")
-                                    col2.metric("Precision", f"{precision_new:.4f}",
-                                              f"{precision_new - precision:.4f}")
-                                    col3.metric("Recall", f"{recall_new:.4f}",
-                                              f"{recall_new - recall:.4f}")
-                                    col4.metric("F1 Score", f"{f1_new:.4f}",
-                                              f"{f1_new - f1:.4f}")
-                                    
-                                    # Update confusion matrix
-                                    cm_new = confusion_matrix(y_test, y_pred_new)
-                                    fig4, ax4 = plt.subplots(figsize=(8, 6))
-                                    if target_mapping:
-                                        sns.heatmap(cm_new, annot=True, fmt='d', ax=ax4,
-                                                  xticklabels=class_names, yticklabels=class_names,
-                                                  cmap='Blues')
+                            # Convert report to DataFrame with class names
+                            if target_mapping:
+                                # Create reverse mapping (encoded value -> original category)
+                                reverse_mapping = {v: k for k, v in target_mapping.items()}
+                                
+                                # Create a new report with original category names
+                                new_report = {}
+                                for key, val in report.items():
+                                    if key.isdigit() or (isinstance(key, (int, float)) and key == int(key)):
+                                        # This is a class label - convert it
+                                        new_key = reverse_mapping.get(int(key), str(key))
+                                        new_report[new_key] = val
                                     else:
-                                        sns.heatmap(cm_new, annot=True, fmt='d', ax=ax4, cmap='Blues')
-                                    plt.title(f'Confusion Matrix (Threshold = {new_threshold:.2f})')
-                                    plt.ylabel('True Label')
-                                    plt.xlabel('Predicted Label')
-                                    st.pyplot(fig4)
-                        
-                        # Feature importance
-                        st.markdown("### Feature Importance")
-                        if hasattr(model, 'feature_importances_'):
-                            # For tree-based models
-                            importances = model.feature_importances_
-                            indices = np.argsort(importances)[::-1]
-                            # Create DataFrame for importance
-                            importance_df = pd.DataFrame({
-                                'feature': [X.columns[i] for i in indices],
-                                'importance': [importances[i] for i in indices]
-                            })
+                                        # This is a metric like 'accuracy', 'macro avg', etc.
+                                        new_report[key] = val
+                                report = new_report
                             
-                            # Display feature importance
-                            st.dataframe(importance_df)
+                            # Store report in session state
+                            st.session_state.evaluation_state['report'] = report
                             
-                            # Plot feature importance
-                            fig, ax = plt.subplots(figsize=(10, 6))
-                            importance_df.sort_values('importance', ascending=True).tail(15).plot(
-                                kind='barh', x='feature', y='importance', ax=ax)
-                            plt.title('Feature Importance (Top 15)')
+                            # Convert to DataFrame for display
+                            report_df = pd.DataFrame(report).transpose()
+                            
+                            # Display report
+                            st.dataframe(report_df)
+                            
+                            # Plot confusion matrix
+                            st.markdown("### Confusion Matrix")
+                            cm = confusion_matrix(y_test, y_pred)
+                            
+                            # Store confusion matrix in session state
+                            st.session_state.evaluation_state['confusion_matrix'] = cm
+                            
+                            # Get class names for the confusion matrix
+                            if target_mapping:
+                                # Create reverse mapping (encoded value -> original category)
+                                reverse_mapping = {v: k for k, v in target_mapping.items()}
+                                class_names = [reverse_mapping.get(i, str(i)) for i in range(len(np.unique(y)))]
+                                
+                                # Store class names in session state
+                                st.session_state.evaluation_state['class_names'] = class_names
+                                
+                                # Plot confusion matrix with original class names
+                                fig, ax = plt.subplots(figsize=(8, 6))
+                                sns.heatmap(cm, annot=True, fmt='d', ax=ax, xticklabels=class_names, yticklabels=class_names,
+                                          cmap='Blues')
+                            else:
+                                st.session_state.evaluation_state['class_names'] = None
+                                
+                                fig, ax = plt.subplots(figsize=(8, 6))
+                                sns.heatmap(cm, annot=True, fmt='d', ax=ax, cmap='Blues')
+                            
+                            plt.title('Confusion Matrix')
+                            plt.ylabel('True Label')
+                            plt.xlabel('Predicted Label')
+                            st.pyplot(fig)
+                            
+                            # For binary classification, add ROC and PR curves
+                            if n_classes == 2 and y_pred_proba is not None:
+                                st.markdown("### ROC and Precision-Recall Curves")
+                                
+                                # Create two columns for the plots
+                                col1, col2 = st.columns(2)
+                                
+                                # ROC curve
+                                fpr, tpr, thresholds = roc_curve(y_test, y_pred_proba)
+                                roc_auc = auc(fpr, tpr)
+                                
+                                # Store ROC data in session state
+                                st.session_state.evaluation_state['roc_data'] = {
+                                    'fpr': fpr,
+                                    'tpr': tpr,
+                                    'thresholds': thresholds,
+                                    'roc_auc': roc_auc
+                                }
+                                
+                                fig1, ax1 = plt.subplots(figsize=(8, 6))
+                                ax1.plot(fpr, tpr, label=f'ROC curve (area = {roc_auc:.3f})')
+                                ax1.plot([0, 1], [0, 1], 'k--')
+                                
+                                # If custom threshold was used, add point on ROC curve
+                                if custom_threshold is not None:
+                                    # Find index closest to custom threshold
+                                    thresh_idx = np.argmin(np.abs(thresholds - custom_threshold))
+                                    ax1.plot(fpr[thresh_idx], tpr[thresh_idx], 'ro', markersize=8,
+                                            label=f'Threshold = {custom_threshold:.2f}')
+                                
+                                ax1.set_xlim([0.0, 1.0])
+                                ax1.set_ylim([0.0, 1.05])
+                                ax1.set_xlabel('False Positive Rate')
+                                ax1.set_ylabel('True Positive Rate')
+                                ax1.set_title('Receiver Operating Characteristic (ROC)')
+                                ax1.legend(loc="lower right")
+                                col1.pyplot(fig1)
+                                
+                                # Precision-Recall curve (better for imbalanced data)
+                                precision_curve, recall_curve, pr_thresholds = precision_recall_curve(y_test, y_pred_proba)
+                                pr_auc = average_precision_score(y_test, y_pred_proba)
+                                
+                                # Store PR data in session state
+                                st.session_state.evaluation_state['pr_data'] = {
+                                    'precision': precision_curve,
+                                    'recall': recall_curve,
+                                    'pr_thresholds': pr_thresholds,
+                                    'pr_auc': pr_auc
+                                }
+                                
+                                fig2, ax2 = plt.subplots(figsize=(8, 6))
+                                ax2.plot(recall_curve, precision_curve, label=f'PR curve (area = {pr_auc:.3f})')
+                                
+                                # Add baseline (no skill) line
+                                no_skill = len(y_test[y_test == 1]) / len(y_test)
+                                ax2.plot([0, 1], [no_skill, no_skill], linestyle='--', label='No Skill')
+                                
+                                ax2.set_xlim([0.0, 1.0])
+                                ax2.set_ylim([0.0, 1.05])
+                                ax2.set_xlabel('Recall')
+                                ax2.set_ylabel('Precision')
+                                ax2.set_title('Precision-Recall Curve (Better for Imbalanced Data)')
+                                ax2.legend(loc="best")
+                                col2.pyplot(fig2)
+                                
+                                # Threshold optimization curve for binary classification
+                                st.markdown("### Threshold Optimization")
+                                st.info("This visualization helps find the optimal threshold for your specific needs. "
+                                      "Move the threshold to balance precision and recall.")
+                                
+                                # Create dataframe of threshold metrics
+                                thresh_metrics = []
+                                
+                                # Use fewer thresholds for efficiency
+                                eval_thresholds = np.linspace(0.05, 0.95, 19)
+                                
+                                for t in eval_thresholds:
+                                    y_pred_t = (y_pred_proba > t).astype(int)
+                                    precision_t = precision_score(y_test, y_pred_t, zero_division=0)
+                                    recall_t = recall_score(y_test, y_pred_t)
+                                    f1_t = 2 * (precision_t * recall_t) / (precision_t + recall_t) if (precision_t + recall_t) > 0 else 0
+                                    accuracy_t = accuracy_score(y_test, y_pred_t)
+                                    thresh_metrics.append({
+                                        'threshold': t,
+                                        'precision': precision_t,
+                                        'recall': recall_t,
+                                        'f1': f1_t,
+                                        'accuracy': accuracy_t
+                                    })
+                                
+                                thresh_df = pd.DataFrame(thresh_metrics)
+                                
+                                # Store threshold metrics in session state
+                                st.session_state.evaluation_state['threshold_metrics'] = thresh_df
+                                
+                                # Plot threshold metrics
+                                fig3, ax3 = plt.subplots(figsize=(10, 6))
+                                ax3.plot(thresh_df['threshold'], thresh_df['precision'], label='Precision')
+                                ax3.plot(thresh_df['threshold'], thresh_df['recall'], label='Recall')
+                                ax3.plot(thresh_df['threshold'], thresh_df['f1'], label='F1 Score')
+                                ax3.plot(thresh_df['threshold'], thresh_df['accuracy'], label='Accuracy')
+                                
+                                # Add vertical line for current/default threshold
+                                if custom_threshold is not None:
+                                    ax3.axvline(x=custom_threshold, color='r', linestyle='--',
+                                              label=f'Custom threshold ({custom_threshold:.2f})')
+                                else:
+                                    ax3.axvline(x=0.5, color='k', linestyle='--',
+                                              label='Default threshold (0.5)')
+                                
+                                # Find threshold with maximum F1 score
+                                best_f1_threshold = thresh_df.loc[thresh_df['f1'].idxmax(), 'threshold']
+                                ax3.axvline(x=best_f1_threshold, color='g', linestyle='--',
+                                          label=f'Best F1 threshold ({best_f1_threshold:.2f})')
+                                
+                                ax3.set_xlim([0.0, 1.0])
+                                ax3.set_ylim([0.0, 1.05])
+                                ax3.set_xlabel('Threshold')
+                                ax3.set_ylabel('Score')
+                                ax3.set_title('Metrics at Different Thresholds')
+                                ax3.legend(loc="best")
+                                ax3.grid(True, alpha=0.3)
+                                st.pyplot(fig3)
+                                
+                                # Store best F1 threshold in session state
+                                st.session_state.evaluation_state['best_f1_threshold'] = best_f1_threshold
+                                
+                                # Recommended threshold based on class imbalance
+                                class_distribution = pd.Series(y_test).value_counts(normalize=True)
+                                minority_class_pct = class_distribution.min()
+                                
+                                st.markdown("### Threshold Recommendations")
+                                st.info(f"Class distribution: {dict(pd.Series(y_test).value_counts())}")
+                                
+                                recommendations = [
+                                    {
+                                        "name": "Balanced (Default)",
+                                        "threshold": 0.5,
+                                        "description": "Standard threshold, assumes equal class importance."
+                                    },
+                                    {
+                                        "name": "Maximum F1",
+                                        "threshold": best_f1_threshold,
+                                        "description": "Optimizes the balance between precision and recall."
+                                    },
+                                    {
+                                        "name": "Class-Balanced",
+                                        "threshold": 1 - minority_class_pct,
+                                        "description": "Adjusts for class imbalance, increasing minority class recall."
+                                    },
+                                ]
+                                
+                                # Store recommendations in session state
+                                st.session_state.evaluation_state['threshold_recommendations'] = recommendations
+                                
+                                # Display recommendations
+                                for rec in recommendations:
+                                    col1, col2 = st.columns([1, 3])
+                                    col1.metric(rec["name"], f"{rec['threshold']:.2f}")
+                                    col2.write(rec["description"])
+                                
+                                # Add option to apply new threshold
+                                st.markdown("### Apply New Threshold")
+                                new_threshold = st.slider(
+                                    "Select threshold to apply",
+                                    min_value=0.0,
+                                    max_value=1.0,
+                                    value=custom_threshold if custom_threshold is not None else 0.5,
+                                    step=0.05,
+                                    key="threshold_slider"
+                                )
+                                
+                                # Use a container for the button and results
+                                threshold_button_col, _ = st.columns([1, 3])
+                                apply_threshold = threshold_button_col.button("Apply New Threshold", key="apply_new_threshold_btn")
+                                
+                                # Container for threshold results
+                                threshold_results = st.container()
+                                
+                                # Update state if button is clicked
+                                if apply_threshold:
+                                    st.session_state.evaluation_state['threshold_applied'] = True
+                                    st.session_state.evaluation_state['applied_threshold'] = new_threshold
+                                
+                                # Show results if threshold has been applied
+                                if st.session_state.evaluation_state['threshold_applied']:
+                                    applied_threshold = st.session_state.evaluation_state['applied_threshold']
+                                    
+                                    with threshold_results:
+                                        # Get data from session state
+                                        y_test = st.session_state.evaluation_state['y_test']
+                                        y_pred_proba = st.session_state.evaluation_state['y_pred_proba']
+                                        
+                                        # Calculate new predictions and metrics
+                                        y_pred_new = (y_pred_proba > applied_threshold).astype(int)
+                                        accuracy_new = accuracy_score(y_test, y_pred_new)
+                                        precision_new = precision_score(y_test, y_pred_new, zero_division=0)
+                                        recall_new = recall_score(y_test, y_pred_new)
+                                        f1_new = f1_score(y_test, y_pred_new)
+                                        
+                                        # Get original metrics
+                                        metrics = st.session_state.evaluation_state['metrics']
+                                        
+                                        # Show new metrics with deltas
+                                        st.success(f"Applied threshold: {applied_threshold:.2f}")
+                                        col1, col2, col3, col4 = st.columns(4)
+                                        col1.metric("Accuracy", f"{accuracy_new:.4f}",
+                                                  f"{accuracy_new - metrics['accuracy']:.4f}")
+                                        col2.metric("Precision", f"{precision_new:.4f}",
+                                                  f"{precision_new - metrics['precision']:.4f}")
+                                        col3.metric("Recall", f"{recall_new:.4f}",
+                                                  f"{recall_new - metrics['recall']:.4f}")
+                                        col4.metric("F1 Score", f"{f1_new:.4f}",
+                                                  f"{f1_new - metrics['f1']:.4f}")
+                                        
+                                        # Update confusion matrix
+                                        cm_new = confusion_matrix(y_test, y_pred_new)
+                                        fig4, ax4 = plt.subplots(figsize=(8, 6))
+                                        
+                                        # Get class names if available
+                                        class_names = st.session_state.evaluation_state.get('class_names', None)
+                                        
+                                        if class_names:
+                                            sns.heatmap(cm_new, annot=True, fmt='d', ax=ax4,
+                                                      xticklabels=class_names, yticklabels=class_names,
+                                                      cmap='Blues')
+                                        else:
+                                            sns.heatmap(cm_new, annot=True, fmt='d', ax=ax4, cmap='Blues')
+                                        
+                                        plt.title(f'Confusion Matrix (Threshold = {applied_threshold:.2f})')
+                                        plt.ylabel('True Label')
+                                        plt.xlabel('Predicted Label')
+                                        st.pyplot(fig4)
+                            
+                            # Feature importance section
+                            st.markdown("### Feature Importance")
+                            
+                            if hasattr(actual_model, 'feature_importances_'):
+                                # For tree-based models
+                                importances = actual_model.feature_importances_
+                                indices = np.argsort(importances)[::-1]
+                                
+                                # Create DataFrame for importance
+                                importance_df = pd.DataFrame({
+                                    'feature': [X.columns[i] for i in indices],
+                                    'importance': [importances[i] for i in indices]
+                                })
+                                
+                                # Store in session state
+                                st.session_state.evaluation_state['feature_importance'] = importance_df
+                                
+                                # Display feature importance
+                                st.dataframe(importance_df)
+                                
+                                # Plot feature importance
+                                fig, ax = plt.subplots(figsize=(10, 6))
+                                importance_df.sort_values('importance', ascending=True).tail(15).plot(
+                                    kind='barh', x='feature', y='importance', ax=ax)
+                                plt.title('Feature Importance (Top 15)')
+                                plt.tight_layout()
+                                st.pyplot(fig)
+                            else:
+                                # For models without feature_importances_ attribute
+                                st.info("Feature importance is not directly available for this model type. "
+                                      "Consider using permutation importance for model interpretation.")
+                                
+                                # Permutation importance button in a column to prevent full-width
+                                perm_col1, _ = st.columns([1, 3])
+                                perm_button = perm_col1.button("Calculate Permutation Importance", key="calc_perm_importance_btn")
+                                
+                                # Update state if button is clicked
+                                if perm_button:
+                                    st.session_state.evaluation_state['permutation_calculated'] = True
+                                
+                                # Container for permutation results
+                                perm_results = st.container()
+                                
+                                # Show permutation importance if calculated
+                                if st.session_state.evaluation_state['permutation_calculated']:
+                                    with perm_results:
+                                        with st.spinner("Calculating permutation importance..."):
+                                            try:
+                                                from sklearn.inspection import permutation_importance
+                                                
+                                                # Create wrapper for neural network if needed
+                                                if is_neural_network:
+                                                    class ModelWrapper:
+                                                        def __init__(self, model):
+                                                            self.model = model
+                                                        
+                                                        def predict(self, X):
+                                                            if n_classes == 2:
+                                                                return (self.model.predict(X) > 0.5).astype(int).flatten()
+                                                            else:
+                                                                return np.argmax(self.model.predict(X), axis=1)
+                                                    
+                                                    model_for_perm = ModelWrapper(actual_model)
+                                                else:
+                                                    model_for_perm = actual_model
+                                                
+                                                # Calculate permutation importance
+                                                scoring = 'balanced_accuracy' if n_classes == 2 else 'accuracy'
+                                                
+                                                # If we have class imbalance, adjust scoring
+                                                class_counts = np.bincount(y)
+                                                if len(class_counts) > 1:
+                                                    imbalance_ratio = np.min(class_counts) / np.max(class_counts)
+                                                    if imbalance_ratio < 0.2:  # Significant imbalance
+                                                        scoring = 'balanced_accuracy'
+                                                
+                                                r = permutation_importance(
+                                                    model_for_perm, X_test_transformed, y_test,
+                                                    n_repeats=10,
+                                                    random_state=42,
+                                                    scoring=scoring
+                                                )
+                                                
+                                                # Create DataFrame for importance
+                                                perm_importance_df = pd.DataFrame({
+                                                    'feature': X.columns,
+                                                    'importance': r.importances_mean,
+                                                    'std': r.importances_std
+                                                }).sort_values('importance', ascending=False)
+                                                
+                                                # Store in session state
+                                                st.session_state.evaluation_state['permutation_importance'] = perm_importance_df
+                                                
+                                                # Display permutation importance
+                                                st.subheader("Permutation Feature Importance")
+                                                st.dataframe(perm_importance_df)
+                                                
+                                                # Plot permutation importance
+                                                fig, ax = plt.subplots(figsize=(10, 6))
+                                                perm_importance_df.head(15).sort_values('importance').plot(
+                                                    kind='barh', x='feature', y='importance', xerr='std', ax=ax)
+                                                plt.title('Permutation Feature Importance (Top 15)')
+                                                plt.tight_layout()
+                                                st.pyplot(fig)
+                                                
+                                                # Add explanation
+                                                st.markdown("""
+                                                **Permutation Importance** measures how much the model performance decreases when a feature is randomly shuffled.
+                                                Higher values indicate more important features. Features with negative importance can be noise or might be interacting with other features.
+                                                """)
+                                            except Exception as e:
+                                                st.error(f"Error calculating permutation importance: {str(e)}")
+                                                st.code(traceback.format_exc())
+                        else:  # Regression evaluation
+                            # Regression evaluation
+                            from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+                            
+                            # Handle predictions based on model type
+                            if is_neural_network:
+                                y_pred = actual_model.predict(X_test_transformed).flatten()
+                            else:
+                                y_pred = actual_model.predict(X_test_transformed)
+                            
+                            # Store predictions in session state
+                            st.session_state.evaluation_state['y_test'] = y_test
+                            st.session_state.evaluation_state['y_pred'] = y_pred
+                            
+                            # Calculate metrics
+                            mse = mean_squared_error(y_test, y_pred)
+                            rmse = np.sqrt(mse)
+                            mae = mean_absolute_error(y_test, y_pred)
+                            r2 = r2_score(y_test, y_pred)
+                            
+                            # Store metrics in session state
+                            st.session_state.evaluation_state['metrics'] = {
+                                'mse': mse,
+                                'rmse': rmse,
+                                'mae': mae,
+                                'r2': r2
+                            }
+                            
+                            # Display metrics
+                            col1, col2, col3 = st.columns(3)
+                            col1.metric("RMSE", f"{rmse:.4f}")
+                            col2.metric("MAE", f"{mae:.4f}")
+                            col3.metric("R² Score", f"{r2:.4f}")
+                            
+                            # Plot actual vs predicted
+                            st.markdown("### Actual vs Predicted")
+                            fig, ax = plt.subplots(figsize=(8, 6))
+                            plt.scatter(y_test, y_pred, alpha=0.5)
+                            plt.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], 'r--')
+                            plt.xlabel("Actual")
+                            plt.ylabel("Predicted")
+                            plt.title("Actual vs Predicted Values")
+                            st.pyplot(fig)
+                            
+                            # Error distribution
+                            st.markdown("### Error Distribution")
+                            fig, ax = plt.subplots(figsize=(8, 6))
+                            errors = y_test - y_pred
+                            
+                            # Store errors in session state
+                            st.session_state.evaluation_state['errors'] = errors
+                            
+                            plt.hist(errors, bins=30)
+                            plt.title('Error Distribution')
+                            plt.xlabel('Prediction Error')
+                            plt.ylabel('Frequency')
+                            plt.axvline(x=0, color='r', linestyle='--')
                             plt.tight_layout()
                             st.pyplot(fig)
-                        else:
-                            # For models without feature_importances_ attribute
-                            st.info("Feature importance is not directly available for this model type. "
-                                   "Consider using permutation importance for model interpretation.")
                             
-                            # Use columns to prevent full-width button
-                            perm_col1, perm_col2 = st.columns([1, 3])
-                            calc_perm_importance = perm_col1.button("Calculate Permutation Importance", key="calc_perm_importance")
+                            # Feature importance (tree-based models) or permutation importance (other models)
+                            st.markdown("### Feature Importance")
                             
-                            # Container for permutation importance results
-                            perm_importance_container = st.container()
-                            
-                            if calc_perm_importance:
-                                with perm_importance_container:
-                                    with st.spinner("Calculating permutation importance..."):
-                                        try:
-                                            from sklearn.inspection import permutation_importance
-                                            
-                                            # Create wrapper for neural network if needed
-                                            if is_neural_network:
-                                                class ModelWrapper:
-                                                    def __init__(self, model):
-                                                        self.model = model
-                                                    
-                                                    def predict(self, X):
-                                                        if len(np.unique(y)) == 2:
-                                                            return (self.model.predict(X) > 0.5).astype(int).flatten()
-                                                        else:
-                                                            return np.argmax(self.model.predict(X), axis=1)
+                            if hasattr(actual_model, 'feature_importances_'):
+                                # For tree-based models
+                                importances = actual_model.feature_importances_
+                                indices = np.argsort(importances)[::-1]
+                                
+                                # Create DataFrame for importance
+                                importance_df = pd.DataFrame({
+                                    'feature': [X.columns[i] for i in indices],
+                                    'importance': [importances[i] for i in indices]
+                                })
+                                
+                                # Store in session state
+                                st.session_state.evaluation_state['feature_importance'] = importance_df
+                                
+                                # Display feature importance
+                                st.dataframe(importance_df)
+                                
+                                # Plot feature importance
+                                fig, ax = plt.subplots(figsize=(10, 6))
+                                importance_df.sort_values('importance', ascending=True).tail(15).plot(
+                                    kind='barh', x='feature', y='importance', ax=ax)
+                                plt.title('Feature Importance (Top 15)')
+                                plt.tight_layout()
+                                st.pyplot(fig)
+                            else:
+                                # For models without feature_importances_ attribute
+                                st.info("Feature importance is not directly available for this model type. "
+                                      "Consider using permutation importance for model interpretation.")
+                                
+                                # Permutation importance button in a column to prevent full-width
+                                perm_col1, _ = st.columns([1, 3])
+                                perm_button = perm_col1.button("Calculate Permutation Importance", key="calc_perm_importance_reg_btn")
+                                
+                                # Update state if button is clicked
+                                if perm_button:
+                                    st.session_state.evaluation_state['permutation_calculated'] = True
+                                
+                                # Container for permutation results
+                                perm_results = st.container()
+                                
+                                # Show permutation importance if calculated
+                                if st.session_state.evaluation_state['permutation_calculated']:
+                                    with perm_results:
+                                        with st.spinner("Calculating permutation importance..."):
+                                            try:
+                                                from sklearn.inspection import permutation_importance
                                                 
-                                                model_for_perm = ModelWrapper(model)
-                                            else:
-                                                model_for_perm = model
-                                            
-                                            # Calculate permutation importance - using balanced accuracy for imbalanced data
-                                            if n_classes == 2:
-                                                scoring = 'balanced_accuracy'
-                                            else:
-                                                scoring = 'balanced_accuracy' if class_distribution.min() < 0.2 else 'accuracy'
-                                            
-                                            r = permutation_importance(
-                                                model_for_perm, X_test, y_test,
-                                                n_repeats=10,
-                                                random_state=42,
-                                                scoring=scoring
-                                            )
-                                            
-                                            # Create DataFrame for importance
-                                            perm_importance_df = pd.DataFrame({
-                                                'feature': X.columns,
-                                                'importance': r.importances_mean,
-                                                'std': r.importances_std
-                                            }).sort_values('importance', ascending=False)
-                                            
-                                            # Display permutation importance
-                                            st.dataframe(perm_importance_df)
-                                            
-                                            # Plot permutation importance
-                                            fig, ax = plt.subplots(figsize=(10, 6))
-                                            perm_importance_df.head(15).sort_values('importance').plot(
-                                                kind='barh', x='feature', y='importance', xerr='std', ax=ax)
-                                            plt.title('Permutation Feature Importance (Top 15)')
-                                            plt.tight_layout()
-                                            st.pyplot(fig)
-                                            
-                                            # Store for report
-                                            if 'model_evaluation' not in st.session_state.report_data:
-                                                st.session_state.report_data['model_evaluation'] = {}
-                                            st.session_state.report_data['model_evaluation']['permutation_importance'] = perm_importance_df
-                                            
-                                        except Exception as e:
-                                            st.error(f"Error calculating permutation importance: {str(e)}")
-                                            st.code(traceback.format_exc())
-                    else:  # Regression
-                        # Regression evaluation
-                        from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-                        # Handle predictions based on model type
-                        if is_neural_network:
-                            y_pred = model.predict(X_test).flatten()
+                                                # Create wrapper for neural network if needed
+                                                if is_neural_network:
+                                                    class KerasRegressorWrapper:
+                                                        def __init__(self, model):
+                                                            self.model = model
+                                                        
+                                                        def predict(self, X):
+                                                            return self.model.predict(X).flatten()
+                                                    
+                                                    model_for_perm = KerasRegressorWrapper(actual_model)
+                                                else:
+                                                    model_for_perm = actual_model
+                                                
+                                                # Calculate permutation importance
+                                                r = permutation_importance(
+                                                    model_for_perm, X_test_transformed, y_test,
+                                                    n_repeats=10,
+                                                    random_state=42,
+                                                    scoring='r2'
+                                                )
+                                                
+                                                # Create DataFrame for importance
+                                                perm_importance_df = pd.DataFrame({
+                                                    'feature': X.columns,
+                                                    'importance': r.importances_mean,
+                                                    'std': r.importances_std
+                                                }).sort_values('importance', ascending=False)
+                                                
+                                                # Store in session state
+                                                st.session_state.evaluation_state['permutation_importance'] = perm_importance_df
+                                                
+                                                # Display permutation importance
+                                                st.subheader("Permutation Feature Importance")
+                                                st.dataframe(perm_importance_df)
+                                                
+                                                # Plot permutation importance
+                                                fig, ax = plt.subplots(figsize=(10, 6))
+                                                perm_importance_df.head(15).sort_values('importance').plot(
+                                                    kind='barh', x='feature', y='importance', xerr='std', ax=ax)
+                                                plt.title('Permutation Feature Importance (Top 15)')
+                                                plt.tight_layout()
+                                                st.pyplot(fig)
+                                            except Exception as e:
+                                                st.error(f"Error calculating permutation importance: {str(e)}")
+                                                st.code(traceback.format_exc())
+                except Exception as e:
+                    st.error(f"Error evaluating model: {str(e)}")
+                    import traceback
+                    st.code(traceback.format_exc())
+        
+        # Add cross-validation section
+        st.markdown("---")
+        st.markdown("### Cross-Validation Analysis")
+        
+        cv_col1, _ = st.columns([1, 3])
+        run_cv = cv_col1.button("Run Cross-Validation", key="run_cv_btn")
+        
+        # Initialize CV state in session_state if not present
+        if 'cv_state' not in st.session_state:
+            st.session_state.cv_state = {
+                'performed': False,
+                'results': None,
+                'cv_scores': None
+            }
+        
+        # Update state if button is clicked
+        if run_cv:
+            st.session_state.cv_state['performed'] = True
+        
+        # Container for CV results
+        cv_results = st.container()
+        
+        # Show CV results if performed
+        if st.session_state.cv_state['performed']:
+            with cv_results:
+                try:
+                    with st.spinner("Running cross-validation..."):
+                        # Get model
+                        model = st.session_state.models[selected_model]
+                        
+                        # Check if model is a dictionary (for SVM and NN models that include scaler)
+                        if isinstance(model, dict) and 'model' in model:
+                            actual_model = model['model']
+                            scaler = model.get('scaler', None)
                         else:
-                            y_pred = model.predict(X_test)
-                        # Calculate metrics
-                        mse = mean_squared_error(y_test, y_pred)
-                        rmse = np.sqrt(mse)
-                        mae = mean_absolute_error(y_test, y_pred)
-                        r2 = r2_score(y_test, y_pred)
-                        # Display metrics
-                        col1, col2, col3 = st.columns(3)
-                        col1.metric("RMSE", f"{rmse:.4f}")
-                        col2.metric("MAE", f"{mae:.4f}")
-                        col3.metric("R² Score", f"{r2:.4f}")
-                        # Plot actual vs predicted
-                        st.markdown("### Actual vs Predicted")
-                        fig, ax = plt.subplots(figsize=(8, 6))
-                        plt.scatter(y_test, y_pred, alpha=0.5)
-                        plt.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], 'r--')
-                        plt.xlabel("Actual")
-                        plt.ylabel("Predicted")
-                        plt.title("Actual vs Predicted Values")
-                        st.pyplot(fig)
-                        # Error distribution
-                        st.markdown("### Error Distribution")
-                        fig, ax = plt.subplots(figsize=(8, 6))
-                        errors = y_test - y_pred
-                        plt.hist(errors, bins=30)
-                        plt.title('Error Distribution')
-                        plt.xlabel('Prediction Error')
-                        plt.ylabel('Frequency')
-                        plt.axvline(x=0, color='r', linestyle='--')
+                            actual_model = model
+                            scaler = None
+                        
+                        # Set up cross-validation
+                        n_folds = st.slider("Number of folds", min_value=3, max_value=10, value=5, step=1)
+                        
+                        # Choose appropriate cross-validation strategy
+                        if target_type == 'categorical':
+                            from sklearn.model_selection import StratifiedKFold, cross_validate
+                            cv = StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=42)
+                            
+                            # Select scoring metrics based on class distribution
+                            class_counts = pd.Series(y).value_counts()
+                            imbalance_ratio = class_counts.min() / class_counts.max()
+                            
+                            if imbalance_ratio < 0.2:  # Significantly imbalanced
+                                scoring = ['accuracy', 'balanced_accuracy', 'precision', 'recall', 'f1', 'roc_auc']
+                                primary_metric = 'balanced_accuracy'
+                            else:  # Relatively balanced
+                                scoring = ['accuracy', 'precision', 'recall', 'f1', 'roc_auc']
+                                primary_metric = 'accuracy'
+                        else:  # Regression
+                            from sklearn.model_selection import KFold, cross_validate
+                            cv = KFold(n_splits=n_folds, shuffle=True, random_state=42)
+                            scoring = ['r2', 'neg_mean_squared_error', 'neg_mean_absolute_error']
+                            primary_metric = 'r2'
+                        
+                        # If scaler is provided, we need to handle scaling in CV
+                        if scaler is not None:
+                            # For models requiring scaling, we'll use a Pipeline
+                            from sklearn.pipeline import Pipeline
+                            from sklearn.preprocessing import StandardScaler
+                            pipeline = Pipeline([
+                                ('scaler', StandardScaler()),
+                                ('model', actual_model)
+                            ])
+                            model_to_cv = pipeline
+                        else:
+                            model_to_cv = actual_model
+                        
+                        # Create wrapper for neural network models if needed
+                        if is_neural_network:
+                            # This is more complex for neural networks
+                            # For simplicity, let's just show a message
+                            st.warning("Cross-validation for neural networks is not directly supported in this interface. " +
+                                     "Consider using the K-fold validation functionality from Keras or TensorFlow.")
+                            return
+                        
+                        # Run cross-validation
+                        cv_results = cross_validate(
+                            model_to_cv, X, y, 
+                            cv=cv,
+                            scoring=scoring,
+                            return_train_score=True
+                        )
+                        
+                        # Store CV results in session state
+                        st.session_state.cv_state['results'] = cv_results
+                        st.session_state.cv_state['cv_scores'] = {
+                            metric: {
+                                'mean': cv_results[f'test_{metric}'].mean(),
+                                'std': cv_results[f'test_{metric}'].std(),
+                                'values': cv_results[f'test_{metric}']
+                            }
+                            for metric in scoring
+                        }
+                        
+                        # Display CV results
+                        st.subheader("Cross-Validation Results")
+                        
+                        # Create a table of results
+                        cv_df = pd.DataFrame({
+                            'Metric': [metric for metric in scoring],
+                            'Mean': [cv_results[f'test_{metric}'].mean() for metric in scoring],
+                            'Std Dev': [cv_results[f'test_{metric}'].std() for metric in scoring],
+                            'Min': [cv_results[f'test_{metric}'].min() for metric in scoring],
+                            'Max': [cv_results[f'test_{metric}'].max() for metric in scoring]
+                        })
+                        
+                        # Format negative metrics
+                        for metric in scoring:
+                            if metric.startswith('neg_'):
+                                # Convert negative metrics to positive
+                                cv_df.loc[cv_df['Metric'] == metric, 'Mean'] = -cv_df.loc[cv_df['Metric'] == metric, 'Mean']
+                                cv_df.loc[cv_df['Metric'] == metric, 'Min'] = -cv_df.loc[cv_df['Metric'] == metric, 'Max']
+                                cv_df.loc[cv_df['Metric'] == metric, 'Max'] = -cv_df.loc[cv_df['Metric'] == metric, 'Min']
+                                
+                                # Rename metrics for display
+                                metric_map = {
+                                    'neg_mean_squared_error': 'MSE',
+                                    'neg_mean_absolute_error': 'MAE',
+                                    'neg_root_mean_squared_error': 'RMSE',
+                                    'neg_median_absolute_error': 'Median AE',
+                                    'neg_log_loss': 'Log Loss'
+                                }
+                                new_name = metric_map.get(metric, metric)
+                                cv_df.loc[cv_df['Metric'] == metric, 'Metric'] = new_name
+                        
+                        # Display the table
+                        st.dataframe(cv_df.set_index('Metric'))
+                        
+                        # Display results of primary metric
+                        primary_scores = cv_results[f'test_{primary_metric}']
+                        st.subheader(f"{primary_metric.replace('_', ' ').title()} Scores")
+                        
+                        # Plot CV scores
+                        fig, ax = plt.subplots(figsize=(10, 6))
+                        
+                        # Bar plot of CV scores
+                        ax.bar(range(len(primary_scores)), primary_scores, alpha=0.7)
+                        ax.axhline(y=primary_scores.mean(), color='r', linestyle='-', 
+                                  label=f'Mean = {primary_scores.mean():.4f}')
+                        ax.set_xlabel('Fold')
+                        ax.set_ylabel(primary_metric.replace('_', ' ').title())
+                        ax.set_title(f'Cross-Validation {primary_metric.replace("_", " ").title()} Scores')
+                        ax.set_xticks(range(len(primary_scores)))
+                        ax.set_xticklabels([f'Fold {i+1}' for i in range(len(primary_scores))])
+                        ax.legend()
                         plt.tight_layout()
                         st.pyplot(fig)
-                        # Feature importance (tree-based models) or permutation importance (other models)
-                        if hasattr(model, 'feature_importances_'):
-                            st.markdown("### Feature Importance")
+                        
+                        # Plot comparison of metrics
+                        if len(scoring) > 1:
+                            st.subheader("Metrics Comparison")
+                            
+                            # Create data for plotting
+                            metrics_to_plot = []
+                            for metric in scoring:
+                                # Skip negative metrics as we've already converted them
+                                if metric.startswith('neg_'):
+                                    continue
+                                
+                                metrics_to_plot.append({
+                                    'metric': metric.replace('_', ' ').title(),
+                                    'mean': cv_results[f'test_{metric}'].mean(),
+                                    'std': cv_results[f'test_{metric}'].std()
+                                })
+                            
+                            # Plot metrics comparison
+                            if metrics_to_plot:
+                                metrics_df = pd.DataFrame(metrics_to_plot)
+                                
+                                fig, ax = plt.subplots(figsize=(10, 6))
+                                metrics_df.plot(kind='bar', x='metric', y='mean', yerr='std', ax=ax)
+                                ax.set_ylabel('Score')
+                                ax.set_title('Cross-Validation Metrics Comparison')
+                                plt.tight_layout()
+                                st.pyplot(fig)
+                        
+                        # Display training vs test performance
+                        st.subheader("Training vs Validation Performance")
+                        
+                        # Create data for plotting
+                        train_test_data = []
+                        for metric in scoring:
+                            # Skip negative metrics for simplicity
+                            if metric.startswith('neg_'):
+                                continue
+                            
+                            train_mean = cv_results[f'train_{metric}'].mean()
+                            test_mean = cv_results[f'test_{metric}'].mean()
+                            
+                            train_test_data.append({
+                                'metric': metric.replace('_', ' ').title(),
+                                'train': train_mean,
+                                'test': test_mean
+                            })
+                        
+                        # Plot training vs test performance
+                        if train_test_data:
+                            train_test_df = pd.DataFrame(train_test_data)
+                            
+                            # Calculate overfitting
+                            train_test_df['diff'] = train_test_df['train'] - train_test_df['test']
+                            train_test_df['overfitting'] = train_test_df['diff'] / train_test_df['train'] * 100
+                            
+                            # Plot comparison
                             fig, ax = plt.subplots(figsize=(10, 6))
-                            importances = model.feature_importances_
-                            indices = np.argsort(importances)[::-1]
-                            plt.bar(range(len(indices[:15])), importances[indices[:15]])
-                            plt.xticks(range(len(indices[:15])), [X.columns[i] for i in indices[:15]], rotation=90)
-                            plt.title('Feature Importance')
+                            
+                            # Bar plot showing training and test metrics
+                            bar_width = 0.35
+                            indices = np.arange(len(train_test_df))
+                            
+                            train_bars = ax.bar(indices - bar_width/2, train_test_df['train'], 
+                                              bar_width, label='Training')
+                            test_bars = ax.bar(indices + bar_width/2, train_test_df['test'], 
+                                             bar_width, label='Validation')
+                            
+                            ax.set_xlabel('Metric')
+                            ax.set_ylabel('Score')
+                            ax.set_title('Training vs Validation Performance')
+                            ax.set_xticks(indices)
+                            ax.set_xticklabels(train_test_df['metric'])
+                            ax.legend()
+                            
                             plt.tight_layout()
                             st.pyplot(fig)
-                        else:
-                            # For non-tree models, offer permutation importance
-                            st.info("Feature importance is not directly available for this model type. "
-                                   "Consider using permutation importance for model interpretation.")
                             
-                            if st.button("Calculate Permutation Importance"):
-                                with st.spinner("Calculating permutation importance..."):
-                                    try:
-                                        from sklearn.inspection import permutation_importance
-                                        # Create wrapper for neural network models
-                                        if is_neural_network:
-                                            class KerasRegressorWrapper:
-                                                def __init__(self, model):
-                                                    self.model = model
-                                                def predict(self, X):
-                                                    return self.model.predict(X).flatten()
-                                            model_for_perm = KerasRegressorWrapper(model)
-                                        else:
-                                            model_for_perm = model
-                                        # Calculate permutation importance
-                                        r = permutation_importance(
-                                            model_for_perm, X_test, y_test,
-                                            n_repeats=10,
-                                            random_state=42
-                                        )
-                                        # Create DataFrame for importance scores
-                                        importance_df = pd.DataFrame({
-                                            'feature': X.columns,
-                                            'importance': r.importances_mean,
-                                            'std': r.importances_std
-                                        }).sort_values('importance', ascending=False)
-                                        # Display importance table
-                                        st.dataframe(importance_df)
-                                        # Plot importance
-                                        fig, ax = plt.subplots(figsize=(10, 6))
-                                        importance_df.head(15).sort_values('importance').plot(
-                                            kind='barh', x='feature', y='importance', xerr='std', ax=ax)
-                                        plt.title('Feature Importance (Permutation Method)')
-                                        plt.tight_layout()
-                                        st.pyplot(fig)
-                                    except Exception as e:
-                                        st.error(f"Could not calculate permutation importance: {str(e)}")
+                            # Add overfitting analysis
+                            st.subheader("Overfitting Analysis")
+                            
+                            # Display overfitting percentages
+                            overfit_df = train_test_df[['metric', 'train', 'test', 'overfitting']]
+                            overfit_df.columns = ['Metric', 'Training Score', 'Validation Score', 'Overfitting (%)']
+                            st.dataframe(overfit_df.set_index('Metric'))
+                            
+                            # Interpretation
+                            mean_overfit = overfit_df['Overfitting (%)'].mean()
+                            
+                            if mean_overfit > 10:
+                                st.warning(f"Average overfitting: {mean_overfit:.2f}%. Consider using more regularization or more training data.")
+                            elif mean_overfit < 3:
+                                st.success(f"Average overfitting: {mean_overfit:.2f}%. The model generalizes well.")
+                            else:
+                                st.info(f"Average overfitting: {mean_overfit:.2f}%. The model shows reasonable generalization.")
+                        
+                        # Learning curve analysis
+                        st.subheader("Learning Curve Analysis")
+                        
+                        # Add button to generate learning curve
+                        lc_col1, _ = st.columns([1, 3])
+                        gen_learning_curve = lc_col1.button("Generate Learning Curve", key="gen_learning_curve_btn")
+                        
+                        # Initialize learning curve state
+                        if 'learning_curve_generated' not in st.session_state.cv_state:
+                            st.session_state.cv_state['learning_curve_generated'] = False
+                        
+                        # Update state if button is clicked
+                        if gen_learning_curve:
+                            st.session_state.cv_state['learning_curve_generated'] = True
+                        
+                        # Container for learning curve results
+                        lc_results = st.container()
+                        
+                        # Show learning curve if generated
+                        if st.session_state.cv_state['learning_curve_generated']:
+                            with lc_results:
+                                with st.spinner("Generating learning curve..."):
+                                    from sklearn.model_selection import learning_curve
+                                    
+                                    # Generate learning curve
+                                    train_sizes, train_scores, test_scores = learning_curve(
+                                        model_to_cv, X, y,
+                                        cv=cv,
+                                        n_jobs=-1,
+                                        train_sizes=np.linspace(0.1, 1.0, 10),
+                                        scoring=primary_metric
+                                    )
+                                    
+                                    # Calculate means and standard deviations
+                                    train_mean = np.mean(train_scores, axis=1)
+                                    train_std = np.std(train_scores, axis=1)
+                                    test_mean = np.mean(test_scores, axis=1)
+                                    test_std = np.std(test_scores, axis=1)
+                                    
+                                    # Store in session state
+                                    st.session_state.cv_state['learning_curve'] = {
+                                        'train_sizes': train_sizes,
+                                        'train_mean': train_mean,
+                                        'train_std': train_std,
+                                        'test_mean': test_mean,
+                                        'test_std': test_std
+                                    }
+                                    
+                                    # Plot learning curve
+                                    fig, ax = plt.subplots(figsize=(10, 6))
+                                    ax.plot(train_sizes, train_mean, 'o-', color='r', label='Training score')
+                                    ax.plot(train_sizes, test_mean, 'o-', color='g', label='Cross-validation score')
+                                    ax.fill_between(train_sizes, train_mean - train_std, train_mean + train_std, alpha=0.1, color='r')
+                                    ax.fill_between(train_sizes, test_mean - test_std, test_mean + test_std, alpha=0.1, color='g')
+                                    ax.set_xlabel('Training examples')
+                                    ax.set_ylabel(primary_metric.replace('_', ' ').title())
+                                    ax.set_title('Learning Curve')
+                                    ax.legend(loc='best')
+                                    ax.grid(True, alpha=0.3)
+                                    st.pyplot(fig)
+                                    
+                                    # Learning curve interpretation
+                                    gap = train_mean[-1] - test_mean[-1]
+                                    slope = (test_mean[-1] - test_mean[0]) / (train_sizes[-1] - train_sizes[0])
+                                    
+                                    st.markdown("### Learning Curve Interpretation")
+                                    
+                                    # Analyze gap between training and validation scores
+                                    if gap > 0.1:
+                                        st.warning(f"High variance (overfitting): The gap between training and validation scores is {gap:.4f}.")
+                                        st.markdown("**Recommendations:**")
+                                        st.markdown("- Use more regularization")
+                                        st.markdown("- Simplify the model")
+                                        st.markdown("- Collect more training data")
+                                    elif train_mean[-1] < 0.7 and test_mean[-1] < 0.7:
+                                        st.warning(f"High bias (underfitting): Both training ({train_mean[-1]:.4f}) and validation ({test_mean[-1]:.4f}) scores are low.")
+                                        st.markdown("**Recommendations:**")
+                                        st.markdown("- Use a more complex model")
+                                        st.markdown("- Add more features")
+                                        st.markdown("- Reduce regularization")
+                                    else:
+                                        st.success(f"Good balance: Training score {train_mean[-1]:.4f}, validation score {test_mean[-1]:.4f}.")
+                                    
+                                    # Analyze validation curve slope
+                                    if slope > 0.01:
+                                        st.info(f"The model performance is still improving with more data (slope: {slope:.4f}).")
+                                        st.markdown("**Recommendation:** Collect more training data if possible.")
+                                    else:
+                                        st.info(f"Adding more data may not significantly improve performance (slope: {slope:.4f}).")
+                                        st.markdown("**Recommendation:** Focus on feature engineering or model architecture rather than collecting more data.")
+                        
+                except Exception as e:
+                    st.error(f"Error running cross-validation: {str(e)}")
+                    import traceback
+                    st.code(traceback.format_exc())
+    
+        # Add section for saving model evaluation results
+        st.markdown("---")
+        st.subheader("Save Evaluation Results")
+        
+        if st.button("Save Evaluation Report", key="save_eval_report"):
+            try:
+                # Get timestamp
+                import datetime
+                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                
+                # Create report dictionary
+                evaluation_report = {
+                    "model_name": selected_model,
+                    "timestamp": timestamp,
+                    "metrics": st.session_state.evaluation_state.get('metrics', {}),
+                    "confusion_matrix": st.session_state.evaluation_state.get('confusion_matrix', None),
+                    "feature_importance": st.session_state.evaluation_state.get('feature_importance', None),
+                    "permutation_importance": st.session_state.evaluation_state.get('permutation_importance', None)
+                }
+                
+                # Add classification-specific metrics
+                if target_type == 'categorical':
+                    evaluation_report.update({
+                        "classification_report": st.session_state.evaluation_state.get('report', None),
+                        "roc_data": st.session_state.evaluation_state.get('roc_data', None),
+                        "pr_data": st.session_state.evaluation_state.get('pr_data', None),
+                        "threshold_metrics": st.session_state.evaluation_state.get('threshold_metrics', None)
+                    })
+                
+                # Add cross-validation results if available
+                if st.session_state.cv_state.get('performed', False):
+                    evaluation_report["cv_scores"] = st.session_state.cv_state.get('cv_scores', None)
+                    evaluation_report["learning_curve"] = st.session_state.cv_state.get('learning_curve', None)
+                
+                # Convert to JSON
+                import json
+                
+                # Handle NumPy arrays and other non-serializable objects
+                class NumpyEncoder(json.JSONEncoder):
+                    def default(self, obj):
+                        if isinstance(obj, np.ndarray):
+                            return obj.tolist()
+                        if isinstance(obj, pd.DataFrame):
+                            return obj.to_dict(orient='records')
+                        if np.isscalar(obj) and np.isnan(obj):
+                            return None
+                        return super().default(obj)
+                
+                # Generate report JSON
+                report_json = json.dumps(evaluation_report, cls=NumpyEncoder, indent=2)
+                
+                # Create filename
+                report_filename = f"model_evaluation_{selected_model}_{timestamp}.json"
+                
+                # Download button
+                st.download_button(
+                    label="Download Evaluation Report",
+                    data=report_json,
+                    file_name=report_filename,
+                    mime="application/json"
+                )
+                
+                # If there's a save directory set, also save there
+                if 'save_directory' in st.session_state:
+                    try:
+                        import os
+                        reports_dir = os.path.join(st.session_state.save_directory, "reports")
+                        os.makedirs(reports_dir, exist_ok=True)
+                        
+                        report_path = os.path.join(reports_dir, report_filename)
+                        with open(report_path, 'w') as f:
+                            f.write(report_json)
+                        
+                        st.success(f"Report saved to {report_path}")
+                    except Exception as save_err:
+                        st.warning(f"Could not save to directory: {str(save_err)}")
             except Exception as e:
-                st.error(f"Error evaluating model: {str(e)}")
+                st.error(f"Error saving evaluation report: {str(e)}")
                 import traceback
                 st.code(traceback.format_exc())
 
