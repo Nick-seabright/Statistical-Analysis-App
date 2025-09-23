@@ -2689,47 +2689,70 @@ def show_model_training():
                                 if n_classes == 2:  # Binary classification
                                     raw_predictions = actual_model.predict(X_test_transformed)
                                     y_pred_proba = raw_predictions.flatten()
+                                    
+                                    # Check for NaN values
+                                    if np.isnan(y_pred_proba).any():
+                                        st.warning("Neural network predictions contain NaN values. This may indicate numerical issues during training.")
+                                        # Replace NaN with 0.5 (neutral prediction)
+                                        y_pred_proba = np.nan_to_num(y_pred_proba, nan=0.5)
+                                        st.info("NaN values have been replaced with 0.5 for evaluation purposes.")
+                                    
                                     threshold_to_use = custom_threshold if custom_threshold is not None else 0.5
                                     y_pred = (y_pred_proba > threshold_to_use).astype(int)
-                                    
-                                    # Store predictions and probabilities in session state
-                                    st.session_state.evaluation_state['y_test'] = y_test
-                                    st.session_state.evaluation_state['y_pred'] = y_pred
-                                    st.session_state.evaluation_state['y_pred_proba'] = y_pred_proba
                                     
                                     if custom_threshold is not None:
                                         st.info(f"Using custom threshold: {threshold_to_use}")
                                 else:  # Multi-class classification
                                     raw_predictions = actual_model.predict(X_test_transformed)
+                                    
+                                    # Check for NaN values
+                                    if np.isnan(raw_predictions).any():
+                                        st.warning("Neural network predictions contain NaN values. This may indicate numerical issues during training.")
+                                        # Replace NaN with equal probabilities
+                                        raw_predictions = np.nan_to_num(raw_predictions, nan=1.0/n_classes)
+                                        st.info("NaN values have been replaced with uniform probabilities for evaluation purposes.")
+                                    
                                     y_pred = np.argmax(raw_predictions, axis=1)
                                     y_pred_proba = None  # Not applicable for multi-class
-                                    
-                                    # Store predictions in session state
-                                    st.session_state.evaluation_state['y_test'] = y_test
-                                    st.session_state.evaluation_state['y_pred'] = y_pred
                             elif hasattr(actual_model, 'predict_proba') and custom_threshold is not None and n_classes == 2:
                                 # For models with probability estimates and custom threshold
                                 y_pred_proba = actual_model.predict_proba(X_test_transformed)[:, 1]
-                                y_pred = (y_pred_proba > custom_threshold).astype(int)
                                 
-                                # Store predictions and probabilities in session state
-                                st.session_state.evaluation_state['y_test'] = y_test
-                                st.session_state.evaluation_state['y_pred'] = y_pred
-                                st.session_state.evaluation_state['y_pred_proba'] = y_pred_proba
+                                # Check for NaN values
+                                if np.isnan(y_pred_proba).any():
+                                    st.warning("Prediction probabilities contain NaN values. This may indicate numerical issues with the model.")
+                                    # Replace NaN with 0.5 (neutral prediction)
+                                    y_pred_proba = np.nan_to_num(y_pred_proba, nan=0.5)
+                                    st.info("NaN values have been replaced with 0.5 for evaluation purposes.")
+                                
+                                y_pred = (y_pred_proba > custom_threshold).astype(int)
                                 
                                 st.info(f"Using custom threshold: {custom_threshold}")
                             else:
                                 # Standard models
                                 y_pred = actual_model.predict(X_test_transformed)
                                 
-                                # Store predictions in session state
-                                st.session_state.evaluation_state['y_test'] = y_test
-                                st.session_state.evaluation_state['y_pred'] = y_pred
+                                # Check for NaN values in predictions
+                                if np.isnan(y_pred).any():
+                                    st.warning("Predictions contain NaN values. This may indicate numerical issues with the model.")
+                                    # For classification, replace NaN with most frequent class
+                                    if target_type == 'categorical':
+                                        most_frequent_class = np.bincount(y_test).argmax()
+                                        y_pred = np.nan_to_num(y_pred, nan=most_frequent_class)
+                                    else:
+                                        # For regression, replace with mean of y_test
+                                        y_pred = np.nan_to_num(y_pred, nan=np.mean(y_test))
+                                    st.info("NaN values have been replaced for evaluation purposes.")
                                 
                                 if hasattr(actual_model, 'predict_proba') and n_classes == 2:
                                     y_pred_proba = actual_model.predict_proba(X_test_transformed)[:, 1]
-                                    # Store probabilities in session state
-                                    st.session_state.evaluation_state['y_pred_proba'] = y_pred_proba
+                                    
+                                    # Check for NaN values
+                                    if np.isnan(y_pred_proba).any():
+                                        st.warning("Prediction probabilities contain NaN values.")
+                                        # Replace NaN with 0.5 (neutral prediction)
+                                        y_pred_proba = np.nan_to_num(y_pred_proba, nan=0.5)
+                                        st.info("NaN values have been replaced with 0.5 for evaluation purposes.")
                                 else:
                                     y_pred_proba = None
                             
@@ -2825,66 +2848,122 @@ def show_model_training():
                             if n_classes == 2 and y_pred_proba is not None:
                                 st.markdown("### ROC and Precision-Recall Curves")
                                 
-                                # Create two columns for the plots
-                                col1, col2 = st.columns(2)
-                                
-                                # ROC curve
-                                fpr, tpr, thresholds = roc_curve(y_test, y_pred_proba)
-                                roc_auc = auc(fpr, tpr)
-                                
-                                # Store ROC data in session state
-                                st.session_state.evaluation_state['roc_data'] = {
-                                    'fpr': fpr,
-                                    'tpr': tpr,
-                                    'thresholds': thresholds,
-                                    'roc_auc': roc_auc
-                                }
-                                
-                                fig1, ax1 = plt.subplots(figsize=(8, 6))
-                                ax1.plot(fpr, tpr, label=f'ROC curve (area = {roc_auc:.3f})')
-                                ax1.plot([0, 1], [0, 1], 'k--')
-                                
-                                # If custom threshold was used, add point on ROC curve
-                                if custom_threshold is not None:
-                                    # Find index closest to custom threshold
-                                    thresh_idx = np.argmin(np.abs(thresholds - custom_threshold))
-                                    ax1.plot(fpr[thresh_idx], tpr[thresh_idx], 'ro', markersize=8,
-                                            label=f'Threshold = {custom_threshold:.2f}')
-                                
-                                ax1.set_xlim([0.0, 1.0])
-                                ax1.set_ylim([0.0, 1.05])
-                                ax1.set_xlabel('False Positive Rate')
-                                ax1.set_ylabel('True Positive Rate')
-                                ax1.set_title('Receiver Operating Characteristic (ROC)')
-                                ax1.legend(loc="lower right")
-                                col1.pyplot(fig1)
-                                
-                                # Precision-Recall curve (better for imbalanced data)
-                                precision_curve, recall_curve, pr_thresholds = precision_recall_curve(y_test, y_pred_proba)
-                                pr_auc = average_precision_score(y_test, y_pred_proba)
-                                
-                                # Store PR data in session state
-                                st.session_state.evaluation_state['pr_data'] = {
-                                    'precision': precision_curve,
-                                    'recall': recall_curve,
-                                    'pr_thresholds': pr_thresholds,
-                                    'pr_auc': pr_auc
-                                }
-                                
-                                fig2, ax2 = plt.subplots(figsize=(8, 6))
-                                ax2.plot(recall_curve, precision_curve, label=f'PR curve (area = {pr_auc:.3f})')
-                                
-                                # Add baseline (no skill) line
-                                no_skill = len(y_test[y_test == 1]) / len(y_test)
-                                ax2.plot([0, 1], [no_skill, no_skill], linestyle='--', label='No Skill')
-                                
-                                ax2.set_xlim([0.0, 1.0])
-                                ax2.set_ylim([0.0, 1.05])
-                                ax2.set_xlabel('Recall')
-                                ax2.set_ylabel('Precision')
-                                ax2.set_title('Precision-Recall Curve (Better for Imbalanced Data)')
-                                ax2.legend(loc="best")
-                                col2.pyplot(fig2)
+                                # Check for NaN values in the prediction probabilities
+                                if np.isnan(y_pred_proba).any():
+                                    st.warning("Prediction probabilities contain NaN values. ROC and PR curves cannot be calculated.")
+                                    
+                                    # Try to identify the source of NaN values
+                                    nan_count = np.isnan(y_pred_proba).sum()
+                                    st.info(f"Found {nan_count} NaN values in prediction probabilities. This might be due to numerical instability or missing data.")
+                                    
+                                    # Attempt to fix by replacing NaN values with 0.5 (neutral prediction)
+                                    y_pred_proba_fixed = np.nan_to_num(y_pred_proba, nan=0.5)
+                                    st.info("NaN values replaced with 0.5 for visualization purposes.")
+                                    
+                                    try:
+                                        # Create two columns for the plots
+                                        col1, col2 = st.columns(2)
+                                        
+                                        # ROC curve with fixed values
+                                        fpr, tpr, thresholds = roc_curve(y_test, y_pred_proba_fixed)
+                                        roc_auc = auc(fpr, tpr)
+                                        
+                                        fig1, ax1 = plt.subplots(figsize=(8, 6))
+                                        ax1.plot(fpr, tpr, label=f'ROC curve (area = {roc_auc:.3f})')
+                                        ax1.plot([0, 1], [0, 1], 'k--')
+                                        
+                                        # If custom threshold was used, add point on ROC curve
+                                        if custom_threshold is not None:
+                                            # Find index closest to custom threshold
+                                            thresh_idx = np.argmin(np.abs(thresholds - custom_threshold))
+                                            if thresh_idx < len(fpr):  # Make sure index is valid
+                                                ax1.plot(fpr[thresh_idx], tpr[thresh_idx], 'ro', markersize=8,
+                                                       label=f'Threshold = {custom_threshold:.2f}')
+                                        
+                                        ax1.set_xlim([0.0, 1.0])
+                                        ax1.set_ylim([0.0, 1.05])
+                                        ax1.set_xlabel('False Positive Rate')
+                                        ax1.set_ylabel('True Positive Rate')
+                                        ax1.set_title('ROC Curve (NaN values replaced)')
+                                        ax1.legend(loc="lower right")
+                                        col1.pyplot(fig1)
+                                        
+                                        # Precision-Recall curve (better for imbalanced data)
+                                        precision_curve, recall_curve, pr_thresholds = precision_recall_curve(y_test, y_pred_proba_fixed)
+                                        pr_auc = average_precision_score(y_test, y_pred_proba_fixed)
+                                        
+                                        fig2, ax2 = plt.subplots(figsize=(8, 6))
+                                        ax2.plot(recall_curve, precision_curve, label=f'PR curve (area = {pr_auc:.3f})')
+                                        
+                                        # Add baseline (no skill) line
+                                        no_skill = len(y_test[y_test == 1]) / len(y_test)
+                                        ax2.plot([0, 1], [no_skill, no_skill], linestyle='--', label='No Skill')
+                                        
+                                        ax2.set_xlim([0.0, 1.0])
+                                        ax2.set_ylim([0.0, 1.05])
+                                        ax2.set_xlabel('Recall')
+                                        ax2.set_ylabel('Precision')
+                                        ax2.set_title('Precision-Recall Curve (NaN values replaced)')
+                                        ax2.legend(loc="best")
+                                        col2.pyplot(fig2)
+                                        
+                                        # Use the fixed probabilities for further calculations
+                                        y_pred_proba = y_pred_proba_fixed
+                                        
+                                    except Exception as e:
+                                        st.error(f"Error generating ROC and PR curves even after fixing NaN values: {str(e)}")
+                                        import traceback
+                                        st.code(traceback.format_exc())
+                                else:
+                                    try:
+                                        # Create two columns for the plots
+                                        col1, col2 = st.columns(2)
+                                        
+                                        # ROC curve
+                                        fpr, tpr, thresholds = roc_curve(y_test, y_pred_proba)
+                                        roc_auc = auc(fpr, tpr)
+                                        
+                                        fig1, ax1 = plt.subplots(figsize=(8, 6))
+                                        ax1.plot(fpr, tpr, label=f'ROC curve (area = {roc_auc:.3f})')
+                                        ax1.plot([0, 1], [0, 1], 'k--')
+                                        
+                                        # If custom threshold was used, add point on ROC curve
+                                        if custom_threshold is not None:
+                                            # Find index closest to custom threshold
+                                            thresh_idx = np.argmin(np.abs(thresholds - custom_threshold))
+                                            ax1.plot(fpr[thresh_idx], tpr[thresh_idx], 'ro', markersize=8,
+                                                   label=f'Threshold = {custom_threshold:.2f}')
+                                        
+                                        ax1.set_xlim([0.0, 1.0])
+                                        ax1.set_ylim([0.0, 1.05])
+                                        ax1.set_xlabel('False Positive Rate')
+                                        ax1.set_ylabel('True Positive Rate')
+                                        ax1.set_title('Receiver Operating Characteristic (ROC)')
+                                        ax1.legend(loc="lower right")
+                                        col1.pyplot(fig1)
+                                        
+                                        # Precision-Recall curve (better for imbalanced data)
+                                        precision_curve, recall_curve, pr_thresholds = precision_recall_curve(y_test, y_pred_proba)
+                                        pr_auc = average_precision_score(y_test, y_pred_proba)
+                                        
+                                        fig2, ax2 = plt.subplots(figsize=(8, 6))
+                                        ax2.plot(recall_curve, precision_curve, label=f'PR curve (area = {pr_auc:.3f})')
+                                        
+                                        # Add baseline (no skill) line
+                                        no_skill = len(y_test[y_test == 1]) / len(y_test)
+                                        ax2.plot([0, 1], [no_skill, no_skill], linestyle='--', label='No Skill')
+                                        
+                                        ax2.set_xlim([0.0, 1.0])
+                                        ax2.set_ylim([0.0, 1.05])
+                                        ax2.set_xlabel('Recall')
+                                        ax2.set_ylabel('Precision')
+                                        ax2.set_title('Precision-Recall Curve (Better for Imbalanced Data)')
+                                        ax2.legend(loc="best")
+                                        col2.pyplot(fig2)
+                                    except Exception as e:
+                                        st.error(f"Error generating ROC and PR curves: {str(e)}")
+                                        import traceback
+                                        st.code(traceback.format_exc())
                                 
                                 # Threshold optimization curve for binary classification
                                 if n_classes == 2 and y_pred_proba is not None:
