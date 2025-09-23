@@ -221,21 +221,29 @@ def show_model_training():
                             st.markdown("### Feature Importance")
                             # Convert to DataFrame if it's a dictionary
                             if isinstance(feature_importance, dict):
-                                # Take the first model's feature importance for display
-                                model_name = list(feature_importance.keys())[0]
-                                importance_df = feature_importance[model_name]
-                                st.write(f"Feature importance from {model_name}:")
+                                # Check if dictionary is not empty
+                                if feature_importance:  # This checks if the dictionary is not empty
+                                    # Take the first model's feature importance for display
+                                    model_name = list(feature_importance.keys())[0]
+                                    importance_df = feature_importance[model_name]
+                                    st.write(f"Feature importance from {model_name}:")
+                                else:
+                                    st.info("Feature importance not available for the selected models.")
+                                    importance_df = None
                             else:
                                 importance_df = feature_importance
-                            # Display feature importance
-                            st.dataframe(importance_df)
-                            # Plot feature importance
-                            fig, ax = plt.subplots(figsize=(10, 6))
-                            importance_df.sort_values('importance', ascending=True).tail(15).plot(
-                                kind='barh', x='feature', y='importance', ax=ax)
-                            plt.title('Feature Importance')
-                            plt.tight_layout()
-                            st.pyplot(fig)
+                                
+                            # Only display feature importance if we have valid data
+                            if importance_df is not None and not importance_df.empty:
+                                # Display feature importance
+                                st.dataframe(importance_df)
+                                # Plot feature importance
+                                fig, ax = plt.subplots(figsize=(10, 6))
+                                importance_df.sort_values('importance', ascending=True).tail(15).plot(
+                                    kind='barh', x='feature', y='importance', ax=ax)
+                                plt.title('Feature Importance')
+                                plt.tight_layout()
+                                st.pyplot(fig)
                         
                         # Store results in report data
                         st.session_state.report_data['model_training'] = {
