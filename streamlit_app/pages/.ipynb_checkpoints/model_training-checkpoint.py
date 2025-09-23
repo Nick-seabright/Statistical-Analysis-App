@@ -1350,78 +1350,38 @@ def show_model_training():
                             )
                             
                             if st.button("Apply New Threshold", key="apply_threshold"):
-                                try:
-                                    # Store values in session state to persist through page rerun
-                                    st.session_state.new_threshold_value = new_threshold
-                                    st.session_state.y_test_saved = y_test
-                                    
-                                    # For neural network models, we need special handling
-                                    if is_neural_network:
-                                        # Get raw predictions only once and store them
-                                        if 'nn_raw_predictions' not in st.session_state:
-                                            with st.spinner("Getting predictions from neural network..."):
-                                                raw_preds = model.predict(X_test)
-                                                if len(raw_preds.shape) == 2 and raw_preds.shape[1] == 1:
-                                                    # Binary classification with single output
-                                                    st.session_state.nn_raw_predictions = raw_preds.flatten()
-                                                elif len(raw_preds.shape) == 2 and raw_preds.shape[1] == 2:
-                                                    # Binary classification with two outputs
-                                                    st.session_state.nn_raw_predictions = raw_preds[:, 1]
-                                                else:
-                                                    # Multiclass - store the whole array
-                                                    st.session_state.nn_raw_predictions = raw_preds
-                                        
-                                        # Use the stored predictions
-                                        if len(np.unique(y_test)) == 2:  # Binary classification
-                                            y_pred_proba = st.session_state.nn_raw_predictions
-                                            y_pred_new = (y_pred_proba > new_threshold).astype(int)
-                                        else:
-                                            # For multiclass, thresholding doesn't apply the same way
-                                            y_pred_new = np.argmax(st.session_state.nn_raw_predictions, axis=1)
-                                    else:
-                                        # For regular models with predict_proba
-                                        if hasattr(model, 'predict_proba'):
-                                            y_pred_proba = model.predict_proba(X_test)[:, 1]
-                                            y_pred_new = (y_pred_proba > new_threshold).astype(int)
-                                        else:
-                                            st.error("This model doesn't support probability predictions")
-                                            return
-                                            
-                                    # Calculate updated metrics
-                                    accuracy_new = accuracy_score(y_test, y_pred_new)
-                                    precision_new = precision_score(y_test, y_pred_new)
-                                    recall_new = recall_score(y_test, y_pred_new)
-                                    f1_new = f1_score(y_test, y_pred_new)
-                                    
-                                    # Show new metrics
-                                    st.success(f"Applied threshold: {new_threshold:.2f}")
-                                    col1, col2, col3, col4 = st.columns(4)
-                                    col1.metric("Accuracy", f"{accuracy_new:.4f}",
-                                             f"{accuracy_new - accuracy:.4f}")
-                                    col2.metric("Precision", f"{precision_new:.4f}",
-                                             f"{precision_new - precision:.4f}")
-                                    col3.metric("Recall", f"{recall_new:.4f}",
-                                             f"{recall_new - recall:.4f}")
-                                    col4.metric("F1 Score", f"{f1_new:.4f}",
-                                             f"{f1_new - f1:.4f}")
-                                             
-                                    # Update confusion matrix
-                                    cm_new = confusion_matrix(y_test, y_pred_new)
-                                    fig4, ax4 = plt.subplots(figsize=(8, 6))
-                                    if target_mapping:
-                                        sns.heatmap(cm_new, annot=True, fmt='d', ax=ax4,
-                                                  xticklabels=class_names, yticklabels=class_names,
-                                                  cmap='Blues')
-                                    else:
-                                        sns.heatmap(cm_new, annot=True, fmt='d', ax=ax4, cmap='Blues')
-                                    plt.title(f'Confusion Matrix (Threshold = {new_threshold:.2f})')
-                                    plt.ylabel('True Label')
-                                    plt.xlabel('Predicted Label')
-                                    st.pyplot(fig4)
-                                    
-                                except Exception as e:
-                                    st.error(f"Error applying threshold: {str(e)}")
-                                    st.code(traceback.format_exc())
+                                # Recalculate metrics with new threshold
+                                y_pred_new = (y_pred_proba > new_threshold).astype(int)
+                                accuracy_new = accuracy_score(y_test, y_pred_new)
+                                precision_new = precision_score(y_test, y_pred_new)
+                                recall_new = recall_score(y_test, y_pred_new)
+                                f1_new = f1_score(y_test, y_pred_new)
+                                
+                                # Show new metrics
+                                st.success(f"Applied threshold: {new_threshold:.2f}")
+                                col1, col2, col3, col4 = st.columns(4)
+                                col1.metric("Accuracy", f"{accuracy_new:.4f}", 
+                                         f"{accuracy_new - accuracy:.4f}")
+                                col2.metric("Precision", f"{precision_new:.4f}", 
+                                         f"{precision_new - precision:.4f}")
+                                col3.metric("Recall", f"{recall_new:.4f}", 
+                                         f"{recall_new - recall:.4f}")
+                                col4.metric("F1 Score", f"{f1_new:.4f}", 
+                                         f"{f1_new - f1:.4f}")
+                                
+                                # Update confusion matrix
+                                cm_new = confusion_matrix(y_test, y_pred_new)
+                                fig4, ax4 = plt.subplots(figsize=(8, 6))
+                                if target_mapping:
+                                    sns.heatmap(cm_new, annot=True, fmt='d', ax=ax4, 
+                                              xticklabels=class_names, yticklabels=class_names,
+                                              cmap='Blues')
+                                else:
+                                    sns.heatmap(cm_new, annot=True, fmt='d', ax=ax4, cmap='Blues')
+                                plt.title(f'Confusion Matrix (Threshold = {new_threshold:.2f})')
+                                plt.ylabel('True Label')
+                                plt.xlabel('Predicted Label')
+                                st.pyplot(fig4)
                         
                         # Feature importance
                         st.markdown("### Feature Importance")
@@ -1558,92 +1518,43 @@ def show_model_training():
                             st.info("Feature importance is not directly available for this model type. "
                                    "Consider using permutation importance for model interpretation.")
                             
-                            if st.button("Calculate Permutation Importance", key="calc_perm_imp"):
+                            if st.button("Calculate Permutation Importance"):
                                 with st.spinner("Calculating permutation importance..."):
                                     try:
                                         from sklearn.inspection import permutation_importance
-                                        
-                                        # For neural networks, create a wrapper that's compatible with sklearn
+                                        # Create wrapper for neural network models
                                         if is_neural_network:
-                                            # This wrapper makes the TensorFlow model work with sklearn functions
-                                            class NeuralNetworkWrapper:
+                                            class KerasRegressorWrapper:
                                                 def __init__(self, model):
                                                     self.model = model
-                                                    
                                                 def predict(self, X):
-                                                    # For binary classification
-                                                    if len(np.unique(y)) == 2:
-                                                        # Get predictions and apply threshold
-                                                        preds = self.model.predict(X)
-                                                        if len(preds.shape) > 1 and preds.shape[1] > 1:
-                                                            return np.argmax(preds, axis=1)
-                                                        return (preds > 0.5).astype(int).flatten()
-                                                    else:
-                                                        # For multiclass, return class index
-                                                        return np.argmax(self.model.predict(X), axis=1)
-                                            
-                                            # Use a small subset of data to avoid memory issues with neural networks
-                                            sample_size = min(100, len(X_test))
-                                            X_subset = X_test[:sample_size]
-                                            y_subset = y_test[:sample_size]
-                                            
-                                            st.info(f"Using a subset of {sample_size} samples for neural network permutation importance to avoid memory issues.")
-                                            
-                                            # Use our wrapper
-                                            model_for_perm = NeuralNetworkWrapper(model)
-                                            
-                                            # Use appropriate scoring
-                                            if len(np.unique(y)) == 2:
-                                                scoring = 'balanced_accuracy'  # Good for imbalanced binary classification
-                                            else:
-                                                scoring = 'balanced_accuracy' if class_distribution.min() < 0.2 else 'accuracy'
-                                                
-                                            # Run with fewer repeats for neural networks
-                                            r = permutation_importance(
-                                                model_for_perm, X_subset, y_subset,
-                                                n_repeats=3,  # Fewer repeats for neural networks
-                                                random_state=42,
-                                                scoring=scoring,
-                                                n_jobs=1  # Single job to avoid TensorFlow threading issues
-                                            )
+                                                    return self.model.predict(X).flatten()
+                                            model_for_perm = KerasRegressorWrapper(model)
                                         else:
-                                            # For standard models, use normal approach
-                                            if len(np.unique(y_test)) == 2:
-                                                scoring = 'balanced_accuracy'
-                                            else:
-                                                scoring = 'balanced_accuracy' if class_distribution.min() < 0.2 else 'accuracy'
-                                            
-                                            r = permutation_importance(
-                                                model, X_test, y_test,
-                                                n_repeats=10,
-                                                random_state=42,
-                                                scoring=scoring
-                                            )
-                                        
-                                        # Create DataFrame for importance
-                                        perm_importance_df = pd.DataFrame({
+                                            model_for_perm = model
+                                        # Calculate permutation importance
+                                        r = permutation_importance(
+                                            model_for_perm, X_test, y_test,
+                                            n_repeats=10,
+                                            random_state=42
+                                        )
+                                        # Create DataFrame for importance scores
+                                        importance_df = pd.DataFrame({
                                             'feature': X.columns,
                                             'importance': r.importances_mean,
                                             'std': r.importances_std
                                         }).sort_values('importance', ascending=False)
-                                        
-                                        # Display permutation importance
-                                        st.dataframe(perm_importance_df)
-                                        
-                                        # Plot permutation importance
+                                        # Display importance table
+                                        st.dataframe(importance_df)
+                                        # Plot importance
                                         fig, ax = plt.subplots(figsize=(10, 6))
-                                        perm_importance_df.head(15).sort_values('importance').plot(
+                                        importance_df.head(15).sort_values('importance').plot(
                                             kind='barh', x='feature', y='importance', xerr='std', ax=ax)
-                                        plt.title('Permutation Feature Importance (Top 15)')
+                                        plt.title('Feature Importance (Permutation Method)')
                                         plt.tight_layout()
                                         st.pyplot(fig)
-                                        
-                                        # Store in session state for future reference
-                                        st.session_state.permutation_importance = perm_importance_df
-                                        
                                     except Exception as e:
-                                        st.error(f"Error calculating permutation importance: {str(e)}")
-                                        st.code(traceback.format_exc())
+                                        st.error(f"Could not calculate permutation importance: {str(e)}")
             except Exception as e:
                 st.error(f"Error evaluating model: {str(e)}")
                 import traceback
