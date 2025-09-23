@@ -3144,11 +3144,25 @@ def show_model_training():
                                                     def __init__(self, model):
                                                         self.model = model
                                                     
+                                                    def fit(self, X, y):
+                                                        # This is a dummy method to satisfy scikit-learn's requirements
+                                                        # Since we're using a pre-trained model, we don't need to fit again
+                                                        return self
+                                                    
                                                     def predict(self, X):
                                                         if n_classes == 2:
                                                             return (self.model.predict(X) > 0.5).astype(int).flatten()
                                                         else:
                                                             return np.argmax(self.model.predict(X), axis=1)
+                                                    
+                                                    def score(self, X, y):
+                                                        # Implement scoring based on the relevant metric
+                                                        preds = self.predict(X)
+                                                        from sklearn.metrics import balanced_accuracy_score, accuracy_score
+                                                        if n_classes == 2:
+                                                            return balanced_accuracy_score(y, preds)
+                                                        else:
+                                                            return accuracy_score(y, preds)
                                                 
                                                 model_for_perm = ModelWrapper(actual_model)
                                             else:
@@ -3314,8 +3328,18 @@ def show_model_training():
                                                     def __init__(self, model):
                                                         self.model = model
                                                     
+                                                    def fit(self, X, y):
+                                                        # This is a dummy method to satisfy scikit-learn's requirements
+                                                        return self
+                                                    
                                                     def predict(self, X):
                                                         return self.model.predict(X).flatten()
+                                                    
+                                                    def score(self, X, y):
+                                                        # Implement R2 scoring
+                                                        from sklearn.metrics import r2_score
+                                                        preds = self.predict(X)
+                                                        return r2_score(y, preds)
                                                 
                                                 model_for_perm = KerasRegressorWrapper(actual_model)
                                             else:
@@ -3439,10 +3463,139 @@ def show_model_training():
                         
                         # Create wrapper for neural network models if needed
                         if is_neural_network:
-                            # This is more complex for neural networks
-                            # For simplicity, let's just show a message
-                            st.warning("Cross-validation for neural networks is not directly supported in this interface. " +
-                                     "Consider using the K-fold validation functionality from Keras or TensorFlow.")
+                            st.warning("Cross-validation for neural networks is not directly supported in this interface.")
+                            
+                            st.markdown("""
+                            ### K-fold Cross-Validation for Neural Networks
+                            
+                            Neural networks require special handling for cross-validation due to:
+                            1. The need to reset model weights between folds
+                            2. GPU memory management considerations
+                            3. Different training procedures compared to scikit-learn models
+                            
+                            **Recommended approaches:**
+                            
+                            1. **Manual K-fold implementation**:
+                            ```python
+                            from sklearn.model_selection import KFold
+                            import tensorflow as tf
+                            import numpy as np
+                            
+                            # Define your model architecture in a function
+                            def create_model():
+                                model = tf.keras.Sequential([
+                                    # Your layers here
+                                ])
+                                model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+                                return model
+                            
+                            # Perform K-fold cross-validation
+                            kf = KFold(n_splits=5, shuffle=True, random_state=42)
+                            fold_scores = []
+                            
+                            for train_index, test_index in kf.split(X):
+                                X_train_fold, X_test_fold = X[train_index], X[test_index]
+                                y_train_fold, y_test_fold = y[train_index], y[test_index]
+                                
+                                # Create a fresh model for each fold
+                                model = create_model()
+                                
+                                # Train the model
+                                model.fit(X_train_fold, y_train_fold, epochs=50, verbose=0)
+                                
+                                # Evaluate the model
+                                score = model.evaluate(X_test_fold, y_test_fold, verbose=0)
+                                fold_scores.append(score[1])  # Assuming accuracy is the second metric
+                            
+                            print(f"K-fold CV score: {np.mean(fold_scores):.4f} ± {np.std(fold_scores):.4f}")
+                            ```
+                            
+                            2. **Using Keras built-in cross-validation**:
+                            ```python
+                            from tensorflow.keras.wrappers.scikit_learn import KerasClassifier
+                            from sklearn.model_selection import cross_val_score
+                            
+                            # Define your model architecture in a function
+                            def create_model():
+                                model = tf.keras.Sequential([
+                                    # Your layers here
+                                ])
+                                model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+                                return model
+                            
+                            # Create a KerasClassifier
+                            keras_model = KerasClassifier(
+                                build_fn=create_model,
+                                epochs=50,
+                                batch_size=32,
+                                verbose=0
+                            )
+                            
+                            # Perform cross-validation
+                            scores = cross_val_score(keras_model, X, y, cv=5)
+                            print(f"K-fold CV score: {np.mean(scores):.4f} ± {np.std(scores):.4f}")
+                            ```
+                            
+                            **Note:** Cross-validation on neural networks can be computationally expensive. Consider reducing epochs or using a subset of data for initial testing.
+                            """)
+                            
+                            # Offer option to view current model evaluation
+                            if st.button("View Current Model Evaluation Instead"):
+                                st.info("Showing evaluation on a single train/test split instead of cross-validation.")
+                                
+                                # Get current metrics if available
+                                if hasattr(actual_model, 'evaluate'):
+                                    try:
+                                        with st.spinner("Evaluating model..."):
+                                            # Evaluate the model
+                                            evaluation = actual_model.evaluate(X_test_transformed, y_test, verbose=0)
+                                            
+                                            # Display metrics
+                                            metrics = actual_model.metrics_names
+                                            if len(metrics) > 0:
+                                                st.markdown("### Model Metrics")
+                                                
+                                                # Create a DataFrame for the metrics
+                                                metrics_df = pd.DataFrame({
+                                                    'Metric': metrics,
+                                                    'Value': evaluation if isinstance(evaluation, list) else [evaluation]
+                                                })
+                                                
+                                                st.dataframe(metrics_df)
+                                                
+                                                # Plot training history if available
+                                                if hasattr(actual_model, 'history') and actual_model.history is not None:
+                                                    st.markdown("### Training History")
+                                                    
+                                                    history = actual_model.history.history
+                                                    fig, axes = plt.subplots(1, len(history.keys()) // 2, figsize=(12, 4))
+                                                    
+                                                    # Ensure axes is always iterable
+                                                    if len(history.keys()) // 2 == 1:
+                                                        axes = [axes]
+                                                    
+                                                    for i, metric in enumerate(metrics):
+                                                        if i >= len(axes):
+                                                            break
+                                                            
+                                                        if metric in history:
+                                                            axes[i].plot(history[metric], label='Training')
+                                                        
+                                                        val_metric = f'val_{metric}'
+                                                        if val_metric in history:
+                                                            axes[i].plot(history[val_metric], label='Validation')
+                                                        
+                                                        axes[i].set_title(f'{metric}')
+                                                        axes[i].set_xlabel('Epoch')
+                                                        axes[i].set_ylabel(metric)
+                                                        axes[i].legend()
+                                                    
+                                                    plt.tight_layout()
+                                                    st.pyplot(fig)
+                                    except Exception as e:
+                                        st.error(f"Error evaluating neural network: {str(e)}")
+                            
+                            # Skip the rest of the cross-validation code for neural networks
                             return
                         
                         # Run cross-validation
