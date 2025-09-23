@@ -12,10 +12,12 @@ logger = logging.getLogger(__name__)
 def analyze_decision_boundaries(
     df: pd.DataFrame,
     target_column: str,
-    feature_columns: Optional[List[str]] = None
+    feature_columns: Optional[List[str]] = None,
+    min_group_size: float = 0.1  # Add this parameter
 ) -> Dict:
     """
     Analyze decision boundaries and thresholds for each variable
+    
     Parameters:
     -----------
     df : DataFrame
@@ -24,6 +26,9 @@ def analyze_decision_boundaries(
         The target column name
     feature_columns : List[str], optional
         List of features to analyze, if None, all numeric columns are used
+    min_group_size : float, optional
+        Minimum size for each group as a fraction of total data (default: 0.1)
+        
     Returns:
     --------
     Dictionary containing analysis results
