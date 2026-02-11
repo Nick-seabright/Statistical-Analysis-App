@@ -33,6 +33,71 @@ def show_model_training():
     target_type = st.session_state.target_type
     target_mapping = st.session_state.target_mapping if 'target_mapping' in st.session_state else None
     
+    # Add column selection interface
+    st.markdown("### Feature Selection")
+    with st.expander("🔧 Select Features to Include/Exclude in Model", expanded=False):
+        st.markdown("""
+        <div style='background-color: #e8f4f8; padding: 10px; border-radius: 5px; margin-bottom: 10px;'>
+        💡 <b>Tip:</b> You can exclude certain columns from your model (e.g., ID columns, identifiers, or features you don't want to use).
+        Removing irrelevant features can improve model performance and reduce overfitting.
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Create two columns for include/exclude selection
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("**Available Features:**")
+            all_features = list(X.columns)
+            st.info(f"Total: {len(all_features)} features")
+        
+        with col2:
+            st.markdown("**Select Features to Use:**")
+            # Default: use all features
+            if 'model_selected_features' not in st.session_state:
+                st.session_state.model_selected_features = all_features
+            
+            features_to_use = st.multiselect(
+                "Choose features for training",
+                options=all_features,
+                default=st.session_state.model_selected_features,
+                help="Select which features to include in the model. Unselected features will be excluded."
+            )
+            
+            # Option to exclude specific features
+            st.markdown("**Or exclude specific features:**")
+            features_to_exclude = st.multiselect(
+                "Features to exclude",
+                options=all_features,
+                default=[],
+                help="Select features to exclude from the model (e.g., 'ID', 'Name', etc.)"
+            )
+            
+            # Calculate final features
+            if features_to_exclude:
+                final_features = [f for f in all_features if f not in features_to_exclude]
+            elif features_to_use:
+                final_features = features_to_use
+            else:
+                final_features = all_features
+            
+            st.success(f"✓ Using {len(final_features)} features")
+            
+            if len(final_features) == 0:
+                st.error("⚠️ Please select at least one feature!")
+            
+            # Update session state
+            st.session_state.model_selected_features = final_features
+        
+        # Show excluded features if any
+        excluded = set(all_features) - set(final_features)
+        if excluded:
+            st.warning(f"📌 Excluded features: {', '.join(sorted(excluded))}")
+    
+    # Update X to only include selected features
+    X = X[final_features]
+    selected_features = final_features
+    
     # Create tabs for model training options
     tab1, tab2, tab3 = st.tabs(["Basic Models", "Advanced Configuration", "Model Evaluation"])
     with tab1:
