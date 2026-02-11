@@ -275,7 +275,7 @@ def perform_anova(
 ) -> Dict:
     """
     Perform one-way ANOVA test.
-    
+
     Parameters:
     -----------
     data : DataFrame
@@ -288,7 +288,7 @@ def perform_anova(
         Significance level (default: 0.05)
     post_hoc : bool
         Whether to perform Tukey's HSD post-hoc test (default: True)
-        
+
     Returns:
     --------
     Dict containing test results
@@ -298,29 +298,31 @@ def perform_anova(
     if len(groups) < 3:
         raise ValueError(f"ANOVA requires at least 3 groups. Found {len(groups)}.")
     
-    # Create formula and fit the model
-    formula = f"{feature} ~ C({group})"
+    # Create a formula that is safe for column names with spaces.
+    # patsy will automatically treat the string column as categorical.
+    formula = f'Q("{feature}") ~ Q("{group}")'
+    
     model = ols(formula, data=data).fit()
     anova_table = sm.stats.anova_lm(model, typ=2)
     
     # Store group statistics
     group_stats = data.groupby(group)[feature].agg(['mean', 'std', 'count']).reset_index()
     
-    # Prepare results
+    # Use .iloc[] for explicit positional access to fix FutureWarning
     results = {
         'feature': feature,
         'group': group,
-        'f_statistic': anova_table['F'][0],
-        'p_value': anova_table['PR(>F)'][0],
-        'significant': anova_table['PR(>F)'][0] < alpha,
+        'f_statistic': anova_table['F'].iloc[0],
+        'p_value': anova_table['PR(>F)'].iloc[0],
+        'significant': anova_table['PR(>F)'].iloc[0] < alpha,
         'alpha': alpha,
-        'df_between': anova_table['df'][0],
-        'df_within': anova_table['df'][1],
-        'ms_between': anova_table['sum_sq'][0] / anova_table['df'][0],
-        'ms_within': anova_table['sum_sq'][1] / anova_table['df'][1],
-        'ss_between': anova_table['sum_sq'][0],
-        'ss_within': anova_table['sum_sq'][1],
-        'ss_total': anova_table['sum_sq'][0] + anova_table['sum_sq'][1],
+        'df_between': anova_table['df'].iloc[0],
+        'df_within': anova_table['df'].iloc[1],
+        'ms_between': anova_table['sum_sq'].iloc[0] / anova_table['df'].iloc[0],
+        'ms_within': anova_table['sum_sq'].iloc[1] / anova_table['df'].iloc[1],
+        'ss_between': anova_table['sum_sq'].iloc[0],
+        'ss_within': anova_table['sum_sq'].iloc[1],
+        'ss_total': anova_table['sum_sq'].iloc[0] + anova_table['sum_sq'].iloc[1],
         'group_stats': group_stats,
         'model': model,
         'post_hoc': None
@@ -374,106 +376,64 @@ def visualize_anova(results: Dict) -> plt.Figure:
     ax1.set_xticklabels(group_stats[results['group']].values, rotation=45, ha='right')
     ax1.set_ylabel(results['feature'])
     ax1.set_title(f"Mean of {results['feature']} by {results['group']}")
-    
+
+    # Create a DataFrame for plotting from the results
+    feature = results['feature']
+    group = results['group']
+    plot_df = pd.DataFrame({group: [], feature: []})
+    for _, row in group_stats.iterrows():
+        group_name, mean, std, count = row[group], row['mean'], row['std'], int(row['count'])
+        if count > 0:
+            simulated_values = np.random.normal(mean, std, count)
+            temp_df = pd.DataFrame({group: [group_name] * count, feature: simulated_values})
+            plot_df = pd.concat([plot_df, temp_df], ignore_index=True)
+
     # Plot 2: Box plot
     ax2 = fig.add_subplot(gs[0, 1])
-    
-    # FIX: Instead of using model.data, recreate a DataFrame from the original data
-    # This should be available in the group_stats or we create it from the model's formula
     try:
-        # Try to extract the original data from the model
-        if hasattr(results, 'original_data') and isinstance(results['original_data'], pd.DataFrame):
-            # If we stored the original data in the results
-            plot_df = results['original_data']
-        else:
-            # Create a DataFrame from group_stats
-            feature = results['feature']
-            group = results['group']
-            
-            # We need to get the actual data for the boxplot
-            # This is a fallback approach - create sample data based on statistics
-            # It's not ideal but better than erroring out
-            plot_df = pd.DataFrame({
-                group: [],
-                feature: []
-            })
-            
-            # For each group, create data points that match the statistics
-            for _, row in group_stats.iterrows():
-                group_name = row[group]
-                mean = row['mean']
-                std = row['std']
-                count = int(row['count'])
-                
-                # Generate simulated data points that match the statistics
-                if count > 0:
-                    # Use normal distribution with mean and std to approximate original data
-                    simulated_values = np.random.normal(mean, std, count)
-                    
-                    # Create temporary DataFrame and append to plot_df
-                    temp_df = pd.DataFrame({
-                        group: [group_name] * count,
-                        feature: simulated_values
-                    })
-                    
-                    plot_df = pd.concat([plot_df, temp_df], ignore_index=True)
-        
-        # Now use plot_df for the boxplot
         sns.boxplot(x=group, y=feature, data=plot_df, ax=ax2)
         ax2.set_title('Distribution by Group')
-        ax2.set_xticklabels(ax2.get_xticklabels(), rotation=45, ha='right')
+        # Use tick_params to rotate labels and fix UserWarning
+        ax2.tick_params(axis='x', rotation=45)
     except Exception as e:
-        # If we can't create a proper boxplot, display the error and create a simple bar chart instead
         logger.warning(f"Could not create boxplot: {str(e)}. Falling back to bar chart.")
-        
-        # Create a bar chart of means as a fallback
         ax2.bar(group_stats[results['group']], group_stats['mean'])
         ax2.set_title('Group Means (Boxplot unavailable)')
         ax2.set_xlabel(results['group'])
         ax2.set_ylabel(results['feature'])
-        ax2.set_xticklabels(ax2.get_xticklabels(), rotation=45, ha='right')
-    
-    # Plot 3: Violin plot (with similar fix)
+        ax2.tick_params(axis='x', rotation=45)
+
+    # Plot 3: Violin plot
     ax3 = fig.add_subplot(gs[1, 0])
     try:
-        # Use the same plot_df created above
         sns.violinplot(x=results['group'], y=results['feature'], data=plot_df, ax=ax3)
         ax3.set_title('Density by Group')
-        ax3.set_xticklabels(ax3.get_xticklabels(), rotation=45, ha='right')
+        # Use tick_params to rotate labels and fix UserWarning
+        ax3.tick_params(axis='x', rotation=45)
     except Exception as e:
-        # Fallback to a bar chart if violin plot fails
         logger.warning(f"Could not create violin plot: {str(e)}. Falling back to bar chart.")
         ax3.bar(group_stats[results['group']], group_stats['mean'])
         ax3.set_title('Group Means (Violin plot unavailable)')
         ax3.set_xlabel(results['group'])
         ax3.set_ylabel(results['feature'])
-        ax3.set_xticklabels(ax3.get_xticklabels(), rotation=45, ha='right')
-    
+        ax3.tick_params(axis='x', rotation=45)
+
     # Plot 4: Post-hoc test results if available
     ax4 = fig.add_subplot(gs[1, 1])
     if results['post_hoc'] is not None:
-        # Extract data from post-hoc test
         posthoc_data = pd.DataFrame(data=results['post_hoc']._results_table.data[1:],
                                    columns=results['post_hoc']._results_table.data[0])
-        # Convert reject to numeric for coloring
-        posthoc_data['reject_numeric'] = posthoc_data['reject'].astype(int)
-        # Create heatmap for pairwise comparisons
         group1 = [str(x) for x in posthoc_data['group1']]
         group2 = [str(x) for x in posthoc_data['group2']]
-        # Create a square matrix for the heatmap
         unique_groups = sorted(set(group1 + group2))
         n_groups = len(unique_groups)
-        # Initialize matrix with NaNs
         matrix = np.full((n_groups, n_groups), np.nan)
-        # Fill in p-values
         for _, row in posthoc_data.iterrows():
             i = unique_groups.index(str(row['group1']))
             j = unique_groups.index(str(row['group2']))
             matrix[i, j] = row['p-adj']
-            matrix[j, i] = row['p-adj']  # Mirror
-        # Create mask for upper triangle
+            matrix[j, i] = row['p-adj']
         mask = np.triu(np.ones_like(matrix, dtype=bool))
-        # Plot heatmap
         cmap = sns.diverging_palette(220, 20, as_cmap=True)
         sns.heatmap(matrix, mask=mask, cmap=cmap, vmax=1.0, vmin=0.0,
                    center=results['alpha'], annot=True, fmt='.3f',
@@ -485,7 +445,7 @@ def visualize_anova(results: Dict) -> plt.Figure:
                 ha='center', va='center', transform=ax4.transAxes)
         ax4.set_title('Post-hoc Test')
         ax4.axis('off')
-    
+
     # Add overall ANOVA results
     plt.figtext(0.5, 0.01, f"F({results['df_between']:.0f}, {results['df_within']:.0f}) = {results['f_statistic']:.2f}, p-value: {results['p_value']:.4f}",
                ha='center', fontsize=12)

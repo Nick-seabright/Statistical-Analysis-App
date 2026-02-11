@@ -6,11 +6,18 @@ import seaborn as sns
 import os
 import sys
 import traceback
+import importlib  # 1. Import importlib
 
-# Add the parent directory to path if running this file directly
+# Add the parent directory to path
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 if parent_dir not in sys.path:
     sys.path.append(parent_dir)
+
+# 2. Import the entire module, not individual functions
+from edu_analytics import statistical_tests
+
+# 3. THIS IS THE FIX: Force Python to reload the module from the disk every time
+importlib.reload(statistical_tests)
 
 from edu_analytics.statistical_tests import (
     perform_t_test, visualize_t_test,
@@ -297,7 +304,7 @@ def show_statistical_analysis():
                 try:
                     with st.spinner("Performing ANOVA test..."):
                         # Perform ANOVA
-                        anova_results = perform_anova(
+                        anova_results = statistical_tests.perform_anova(
                             data=data,
                             feature=numeric_feature,
                             group=grouping_variable,
@@ -461,7 +468,8 @@ def show_statistical_analysis():
                                         page_number = st.selectbox(
                                             f"Page (showing 4 plots per page, {num_features} total features)",
                                             options=list(range(1, num_pages + 1)),
-                                            format_func=lambda x: f"Page {x} of {num_pages}"
+                                            format_func=lambda x: f"Page {x} of {num_pages}",
+                                            key="correlation_page_selector"
                                         )
                                         start_idx = (page_number - 1) * plots_per_page
                                         end_idx = min(start_idx + plots_per_page, num_features)

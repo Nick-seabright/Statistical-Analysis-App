@@ -41,7 +41,7 @@ from streamlit_app.components.sidebar import create_sidebar
 
 # Set page configuration
 st.set_page_config(
-    page_title="Statistical Analysis App",
+    page_title="Data Science App",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -149,12 +149,16 @@ def main():
     create_sidebar()
     
     # Main app title
-    st.markdown("<div class='main-header'>Statistical Analysis App</div>", unsafe_allow_html=True)
+    st.markdown("<div class='main-header'>Data Science App</div>", unsafe_allow_html=True)
+    st.markdown("<div class='info-text' style='text-align: center; margin-top: -10px; margin-bottom: 20px;'>Created By: Nick Seabright</div>", unsafe_allow_html=True)
     
     # Show different sections based on sidebar selection
     if st.session_state.current_section == "data_upload":
         from streamlit_app.pages.data_upload import show_data_upload
         show_data_upload()
+    elif st.session_state.current_section == "data_cleaning":
+        from streamlit_app.pages.data_cleaning import show_data_cleaning
+        show_data_cleaning()
     elif st.session_state.current_section == "data_exploration":
         from streamlit_app.pages.data_exploration import show_data_exploration
         show_data_exploration()
@@ -164,9 +168,12 @@ def main():
     elif st.session_state.current_section == "threshold_analysis":
         from streamlit_app.pages.threshold_analysis import show_threshold_analysis
         show_threshold_analysis()
-    elif st.session_state.current_section == "model_training":
+    elif st.session_state.current_section == "supervised_learning":
         from streamlit_app.pages.model_training import show_model_training
         show_model_training()
+    elif st.session_state.current_section == "unsupervised_learning":
+        from streamlit_app.pages.unsupervised_learning import show_unsupervised_learning
+        show_unsupervised_learning()
     elif st.session_state.current_section == "predictions":
         from streamlit_app.pages.predictions import show_predictions
         show_predictions()
@@ -177,38 +184,73 @@ def main():
 # Sidebar creation
 def create_sidebar():
     with st.sidebar:
+        try:
+            # Try multiple paths to find the logo
+            logo_paths = [
+                "streamlit_app/assets/logo.png",
+                os.path.join(os.path.dirname(__file__), "streamlit_app/assets/logo.png"),
+                os.path.join(os.path.dirname(os.path.dirname(__file__)), "streamlit_app/assets/logo.png")
+            ]
+            
+            logo_loaded = False
+            for path in logo_paths:
+                try:
+                    st.image(path, width=150)
+                    logo_loaded = True
+                    break
+                except:
+                    continue
+        except Exception:
+            pass  # Continue without logo
+            
         st.title("Navigation")
         
-        # Initialize current section in session state if not exists
-        if 'current_section' not in st.session_state:
-            st.session_state.current_section = "data_exploration"
-        
         # Navigation buttons
-        if st.button("📊 Data Exploration", key="nav_data"):
+        if st.button("📥 Data Upload", key="nav_data"):
+            st.session_state.current_section = "data_upload"
+        if st.button("🧹 Data Cleaning", key="nav_cleaning"):
+            st.session_state.current_section = "data_cleaning"
+        if st.button("📊 Data Exploration", key="nav_explore"):
             st.session_state.current_section = "data_exploration"
-        
         if st.button("📈 Statistical Analysis", key="nav_stats"):
             st.session_state.current_section = "statistical_analysis"
-            
         if st.button("🎯 Threshold Analysis", key="nav_threshold"):
             st.session_state.current_section = "threshold_analysis"
-            
-        if st.button("🧠 Model Training", key="nav_models"):
-            st.session_state.current_section = "model_training"
-            
+        if st.button("🤖 Supervised Learning", key="nav_supervised"):
+            st.session_state.current_section = "supervised_learning"
+        if st.button("🔬 Unsupervised Learning", key="nav_unsupervised"):
+            st.session_state.current_section = "unsupervised_learning"
         if st.button("🔮 Make Predictions", key="nav_predict"):
             st.session_state.current_section = "predictions"
-            
         if st.button("📝 Generate Report", key="nav_report"):
             st.session_state.current_section = "report_generation"
         
         # Reset button
         st.markdown("---")
         if st.button("🔄 Reset All", key="nav_reset"):
-            # Clear all session state
-            for key in list(st.session_state.keys()):
-                del st.session_state[key]
-            st.rerun()
+            try:
+                # Save important state variables
+                save_directory = st.session_state.get('save_directory', None)
+                
+                # Clear session state
+                for key in list(st.session_state.keys()):
+                    if key != 'save_directory':
+                        del st.session_state[key]
+                
+                # Restore saved variables
+                if save_directory:
+                    st.session_state.save_directory = save_directory
+                
+                # Initialize essential session state
+                st.session_state.current_section = "data_upload"
+                st.session_state.data = None
+                st.session_state.processed_data = None
+                
+                # Use the current rerun function
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error resetting app: {e}")
+                st.warning("Please refresh the browser page to reset the application.")
         
         # Display dataset info if data is loaded
         if st.session_state.data is not None:
@@ -228,17 +270,19 @@ def create_sidebar():
                     target_type = st.session_state.target_type.capitalize()
                     st.write(f"Target Type: {target_type}")
                 
-                # Display number of features
-                if 'selected_features' in st.session_state.processed_data:
+                # Show number of features if available
                     num_features = len(st.session_state.processed_data['selected_features'])
                     st.write(f"Features: {num_features}")
-                    
-                    # Option to show all selected features
                     if st.checkbox("Show selected features", value=False):
                         features = st.session_state.processed_data['selected_features']
                         st.write(", ".join(features[:5]) + ("..." if len(features) > 5 else ""))
                         if len(features) > 5:
                             st.expander("All features").write(", ".join(features))
+        
+        # Add version info
+        st.markdown("---")
+        st.caption("Data Science App v1.0.0")
+        st.caption("© 2025 Nick Seabright")
                 
         # Add helpful resources
         st.markdown("---")
@@ -3774,7 +3818,7 @@ def generate_chisquare_html(test_key, test_data):
         
         <p>
             <strong>Interpretation:</strong> 
-            {f'There is a statistically significant association between {results.get("feature", "")} and {results.get("target", "")} (p < {results.get("alpha", 0.05)}). The effect size is {results.get("effect_size", "unknown").lower()} (Cramer\'s V = {results.get("cramers_v", 0):.4f}).' 
+            {f'There is a statistically significant association between {results.get("feature", "")} and {results.get("target", "")} (p < {results.get("alpha", 0.05)}). The effect size is {results.get("effect_size", "unknown").lower()} (Cramers V = {results.get("cramers_v", 0):.4f}).' 
             if results.get('significant', False) 
             else f'There is no statistically significant association between {results.get("feature", "")} and {results.get("target", "")} (p > {results.get("alpha", 0.05)}).'}
         </p>

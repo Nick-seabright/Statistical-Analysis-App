@@ -532,8 +532,8 @@ def generate_statistical_analysis_section(statistical_tests):
                 
                 <p>
                     <strong>Interpretation:</strong> 
-                    {f'There is a statistically significant association between {results.get("feature", "")} and {results.get("target", "")} (p < {results.get("alpha", 0.05)}). The effect size is {results.get("effect_size", "unknown").lower()} (Cramer\'s V = {results.get("cramers_v", 0):.4f}).' 
-                    if results.get('significant', False) 
+                    {f'There is a statistically significant association between {results.get("feature", "")} and {results.get("target", "")} (p < {results.get("alpha", 0.05)}). The effect size is {results.get("effect_size", "unknown").lower()} (Cramers V = {results.get("cramers_v", 0):.4f}).'
+                    if results.get('significant', False)
                     else f'There is no statistically significant association between {results.get("feature", "")} and {results.get("target", "")} (p > {results.get("alpha", 0.05)}).'}
                 </p>
             """

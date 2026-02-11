@@ -23,8 +23,8 @@ def show_model_training():
     if 'processed_data' not in st.session_state or st.session_state.processed_data is None:
         st.warning("Please process your data first.")
         return
-    st.markdown("<div class='subheader'>Model Training</div>", unsafe_allow_html=True)
-    st.markdown("<div class='info-text'>Train machine learning models to predict your target variable.</div>", unsafe_allow_html=True)
+    st.markdown("<div class='subheader'>Supervised Learning</div>", unsafe_allow_html=True)
+    st.markdown("<div class='info-text'>Train supervised machine learning models (classification & regression) to predict your target variable.</div>", unsafe_allow_html=True)
     # Get data from session state
     X = st.session_state.processed_data['X']
     y = st.session_state.processed_data['y']
@@ -91,18 +91,42 @@ def show_model_training():
                 imbalance_method = None
             
             # Select standard models
-            train_rf = st.checkbox("Random Forest Classifier", value=True)
-            train_svm = st.checkbox("Support Vector Machine", value=False)
-            train_xgb = st.checkbox("XGBoost Classifier", value=True)
-            train_nn = st.checkbox("Neural Network", value=False)
+            st.markdown("### Classification Models")
+            
+            col1, col2 = st.columns([1, 3])
+            with col1:
+                train_rf = st.checkbox("Random Forest", value=True)
+            with col2:
+                st.caption("🌲 **Ensemble of Decision Trees** - Creates multiple decision trees and combines their predictions. Excellent for tabular data, handles non-linear relationships, resistant to overfitting. Best for: General-purpose classification with interpretable feature importance.")
+            
+            col1, col2 = st.columns([1, 3])
+            with col1:
+                train_svm = st.checkbox("SVM", value=False)
+            with col2:
+                st.caption("📐 **Support Vector Machine** - Finds the optimal boundary between classes by maximizing the margin. Works well with high-dimensional data and clear class separation. Best for: Text classification, image recognition, when you have more features than samples.")
+            
+            col1, col2 = st.columns([1, 3])
+            with col1:
+                train_xgb = st.checkbox("XGBoost", value=True)
+            with col2:
+                st.caption("🚀 **Gradient Boosting** - Builds trees sequentially, each correcting errors from the previous one. Often wins competitions! Handles missing values automatically. Best for: When you need the highest accuracy on structured/tabular data.")
+            
+            col1, col2 = st.columns([1, 3])
+            with col1:
+                train_nn = st.checkbox("Neural Network", value=False)
+            with col2:
+                st.caption("🧠 **Multi-Layer Perceptron** - Deep learning model that learns complex patterns through multiple layers. Can capture very non-linear relationships. Best for: Large datasets with complex patterns, when feature engineering is difficult.")
             
             # Add specialized models for imbalanced data
             if handle_imbalance:
                 st.markdown("### Specialized Models for Imbalanced Data")
-                train_balanced_rf = st.checkbox("Balanced Random Forest", value=False, 
-                                        help="Variant of Random Forest designed for imbalanced data")
-                train_easy_ensemble = st.checkbox("EasyEnsemble", value=False,
-                                        help="Ensemble method that's effective with imbalanced data")
+                col1, col2 = st.columns([1, 3])
+                with col1:
+                    train_balanced_rf = st.checkbox("Balanced RF", value=False)
+                with col2:
+                    st.caption("⚖️ **Balanced Random Forest** - Each tree is trained on a balanced bootstrap sample. Specifically designed to handle class imbalance. Best for: Imbalanced datasets where you want to detect minority class.")
+                    
+                train_easy_ensemble = st.checkbox("EasyEnsemble - Ensemble of balanced models trained on different subsets. Highly effective for severe class imbalance.", value=False)
             else:
                 train_balanced_rf = False
                 train_easy_ensemble = False
@@ -258,10 +282,32 @@ def show_model_training():
                     import traceback
                     st.code(traceback.format_exc())
         elif target_type in ['numeric', 'time']:
-            train_rf = st.checkbox("Random Forest Regressor", value=True)
-            train_svr = st.checkbox("Support Vector Regressor", value=False)
-            train_xgb = st.checkbox("XGBoost Regressor", value=True)
-            train_nn = st.checkbox("Neural Network Regressor", value=False)
+            st.markdown("### Regression Models")
+            
+            col1, col2 = st.columns([1, 3])
+            with col1:
+                train_rf = st.checkbox("Random Forest", value=True)
+            with col2:
+                st.caption("🌲 **Ensemble of Decision Trees** - Averages predictions from multiple decision trees. Handles non-linear relationships and feature interactions automatically. Best for: General-purpose regression with robust predictions and automatic feature importance.")
+            
+            col1, col2 = st.columns([1, 3])
+            with col1:
+                train_svr = st.checkbox("SVR", value=False)
+            with col2:
+                st.caption("📐 **Support Vector Regressor** - Finds a function that deviates from actual values by a value no greater than epsilon. Works well in high-dimensional spaces. Best for: Smaller datasets with complex non-linear relationships.")
+            
+            col1, col2 = st.columns([1, 3])
+            with col1:
+                train_xgb = st.checkbox("XGBoost", value=True)
+            with col2:
+                st.caption("🚀 **Gradient Boosting** - Sequential ensemble that builds each tree to minimize prediction errors. State-of-the-art performance on structured data. Best for: When you need maximum accuracy on tabular data, competitions, production systems.")
+            
+            col1, col2 = st.columns([1, 3])
+            with col1:
+                train_nn = st.checkbox("Neural Network", value=False)
+            with col2:
+                st.caption("🧠 **Multi-Layer Perceptron** - Deep learning that can model highly complex non-linear relationships. Requires more data to train effectively. Best for: Large datasets with complex patterns that simpler models can't capture.")
+            
             # Train test split options
             test_size = st.slider("Test set size", 0.1, 0.5, 0.2, 0.05)
             # Training button
@@ -700,22 +746,29 @@ def show_model_training():
                 # Handle imbalanced data
                 if 'handle_imbalance' in locals() and handle_imbalance:
                     st.markdown("### Imbalanced Data Handling")
+
+                    # --- FIX IS HERE ---
+                    # 1. Calculate the standard scale_pos_weight
+                    neg_count = (y == 0).sum()
+                    pos_count = (y == 1).sum()
                     
-                    # Scale positive weight option (specific to XGBoost)
+                    # 2. Add a safeguard against division by zero
+                    default_scale_pos = (neg_count / pos_count) if pos_count > 0 else 1.0
+                    
+                    # 3. Update the st.number_input widget
                     scale_pos_weight = st.number_input(
                         "Scale Positive Weight", 
-                        min_value=1.0, 
+                        min_value=0.01,  # Lower the minimum value
                         max_value=100.0, 
-                        value=len(y) / (2 * np.sum(y)) if target_type == 'categorical' else 1.0,
-                        help="Balancing of positive and negative weights. Useful for unbalanced classes."
+                        value=float(default_scale_pos), # Use the robust calculation and cast to float
+                        help="Ratio of negative to positive samples. Common way to handle class imbalance."
                     )
+                    # --- END OF FIX ---
                     
-                    # Add explanation for XGBoost-specific imbalance parameters
                     st.info("""
-                        **Scale Positive Weight**: XGBoost-specific parameter for handling imbalanced data.
-                        A higher value gives more weight to the minority class.
-                        The default value above is calculated as (total_instances / (2 * positive_instances)),
-                        which is a good starting point for imbalanced data.
+                        **Scale Positive Weight**: A common method to handle imbalanced data in XGBoost.
+                        The default value is calculated as `count(negative_class) / count(positive_class)`.
+                        A value > 1 helps the model pay more attention to the minority positive class.
                     """)
                 else:
                     scale_pos_weight = 1.0

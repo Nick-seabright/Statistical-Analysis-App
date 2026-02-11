@@ -31,14 +31,18 @@ def create_sidebar():
         # Navigation buttons
         if st.button("📥 Data Upload", key="nav_data"):
             st.session_state.current_section = "data_upload"
+        if st.button("🧹 Data Cleaning", key="nav_cleaning"):
+            st.session_state.current_section = "data_cleaning"
         if st.button("📊 Data Exploration", key="nav_explore"):
             st.session_state.current_section = "data_exploration"
         if st.button("📈 Statistical Analysis", key="nav_stats"):
             st.session_state.current_section = "statistical_analysis"
         if st.button("🎯 Threshold Analysis", key="nav_threshold"):
             st.session_state.current_section = "threshold_analysis"
-        if st.button("🧠 Model Training", key="nav_models"):
-            st.session_state.current_section = "model_training"
+        if st.button("🤖 Supervised Learning", key="nav_supervised"):
+            st.session_state.current_section = "supervised_learning"
+        if st.button("🔬 Unsupervised Learning", key="nav_unsupervised"):
+            st.session_state.current_section = "unsupervised_learning"
         if st.button("🔮 Make Predictions", key="nav_predict"):
             st.session_state.current_section = "predictions"
         if st.button("📝 Generate Report", key="nav_report"):
@@ -103,5 +107,5 @@ def create_sidebar():
         
         # Add version info
         st.markdown("---")
-        st.caption("Statistical Analysis App v1.0.0")
-        st.caption("© 2025")
+        st.caption("Data Science App v1.0.0")
+        st.caption("© 2025 Nick Seabright")
